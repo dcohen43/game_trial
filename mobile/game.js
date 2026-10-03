@@ -363,10 +363,10 @@ const ENEMY_KINDS = GameCore.ENEMY_KINDS;
 // ===== Game state =====
 const REGEN_GRACE_FRAMES = 180; // ~3s without taking a hit before passive regen kicks in
 const REGEN_RATE = 0.04; // HP/frame (~2.4 HP/s) once regen is active — a slow trickle, not a substitute for pickups
-let player = { x: 0, y: 0, r: 16 * worldScale, speed: BASE_SPEED * speedMultiplier, health: 100, maxHealth: 100, hurtCooldown: 0, angle: -Math.PI / 2, weapon: 'normal', weaponTimer: 0, lives: GameCore.STARTING_LIVES };
+let player = { x: 0, y: 0, r: 16 * worldScale, speed: BASE_SPEED * speedMultiplier, health: 100, maxHealth: 100, hurtCooldown: 0, angle: -Math.PI / 2, weapon: 'normal', weaponTimer: 0, lives: GameCore.STARTING_LIVES, shield: 0 };
 let bullets = [], enemies = [], particles = [], splatters = [], obstacles = [], enemyProjectiles = [], pickups = [];
 let score = 0, wave = 1, enemiesToSpawn = 0, spawnTimer = 0, fireTimer = 0, running = false, shake = 0, levelBannerTimer = 0, regenGrace = 0;
-let comboCount = 0, comboTimer = 0, countdownTimer = 0;
+let comboCount = 0, comboTimer = 0, countdownTimer = 0, nextEnemyId = 1;
 
 function updateLivesHud() {
   livesEl.textContent = `Lives: ${player.lives}`;
@@ -415,7 +415,9 @@ function damagePlayer(amount, hurtCooldownFrames, shakeAmount) {
   regenGrace = REGEN_GRACE_FRAMES;
   playPlayerHurt();
   shake = shakeAmount;
-  const lethal = GameCore.applyDamage(player, amount);
+  const leftover = GameCore.absorbWithShield(player, amount);
+  if (leftover <= 0) return true;
+  const lethal = GameCore.applyDamage(player, leftover);
   if (lethal) {
     const result = GameCore.resolveLethalHit(player);
     updateLivesHud();
@@ -460,7 +462,7 @@ function circleIntersectsAnyObstacle(cx, cy, cr) {
 }
 
 function reset() {
-  player = { x: canvas.width / 2, y: canvas.height / 2, r: 16 * worldScale, speed: BASE_SPEED * speedMultiplier, health: 100, maxHealth: 100, hurtCooldown: 0, angle: -Math.PI / 2, weapon: 'normal', weaponTimer: 0, lives: GameCore.STARTING_LIVES };
+  player = { x: canvas.width / 2, y: canvas.height / 2, r: 16 * worldScale, speed: BASE_SPEED * speedMultiplier, health: 100, maxHealth: 100, hurtCooldown: 0, angle: -Math.PI / 2, weapon: 'normal', weaponTimer: 0, lives: GameCore.STARTING_LIVES, shield: 0 };
   bullets = [];
   enemies = [];
   particles = [];
@@ -469,7 +471,7 @@ function reset() {
   pickups = [];
   score = 0;
   wave = 1;
-  enemiesToSpawn = GameCore.enemiesPerLevel(wave);
+  enemiesToSpawn = GameCore.enemiesPerLevel(wave, worldScale);
   spawnTimer = 0;
   fireTimer = 0;
   shake = 0;
@@ -497,8 +499,9 @@ function spawnEnemy() {
   else { x = Math.random() * canvas.width; y = canvas.height + 30; }
 
   const kind = GameCore.pickEnemyKind(wave);
-  const stats = GameCore.enemyStatsForLevel(kind, wave);
+  const stats = GameCore.enemyStatsForLevel(kind, wave, worldScale);
   enemies.push({
+    id: nextEnemyId++,
     kind,
     x, y,
     r: (stats.r + Math.random() * 4) * worldScale,
@@ -559,7 +562,7 @@ function spawnSparks(x, y) {
 }
 
 function maybeDropPickup(x, y) {
-  const type = GameCore.rollPickupDrop();
+  const type = GameCore.rollPickupDrop(wave);
   if (!type) return;
   pickups.push({ x, y, type, r: 12 * worldScale, bob: Math.random() * Math.PI * 2 });
 }
@@ -576,12 +579,15 @@ function fireCooldown() {
 }
 
 function shoot(angle) {
+  const pierce = player.weapon === 'piercing';
   const makeBullet = a => bullets.push({
     x: player.x + Math.cos(a) * player.r,
     y: player.y + Math.sin(a) * player.r,
     vx: Math.cos(a) * 11,
     vy: Math.sin(a) * 11,
-    r: 4 * worldScale
+    r: (pierce ? 5 : 4) * worldScale,
+    pierce,
+    hitIds: pierce ? new Set() : null
   });
   if (player.weapon === 'spread') {
     makeBullet(angle - 0.22);
@@ -674,11 +680,12 @@ function update() {
     }
   } else if (enemies.length === 0) {
     wave++;
-    enemiesToSpawn = GameCore.enemiesPerLevel(wave);
+    enemiesToSpawn = GameCore.enemiesPerLevel(wave, worldScale);
     waveEl.textContent = `Level: ${wave}`;
     levelBannerTimer = 100;
     spawnObstacles();
     resolveObstacleCollisions(player); // in case a new wall landed on the player
+    for (const p of pickups) resolveObstacleCollisions(p); // ...or on a dropped pickup
     countdownTimer = GameCore.LEVEL_COUNTDOWN_FRAMES;
   }
 
@@ -709,10 +716,15 @@ function update() {
     }
     for (let j = enemies.length - 1; j >= 0; j--) {
       const e = enemies[j];
+      if (b.pierce && b.hitIds.has(e.id)) continue;
       if (GameCore.circlesOverlap(b.x, b.y, b.r, e.x, e.y, e.r)) {
         e.hp--;
         spawnBlood(b.x, b.y, 6, 3);
-        bullets.splice(i, 1);
+        if (b.pierce) {
+          b.hitIds.add(e.id);
+        } else {
+          bullets.splice(i, 1);
+        }
         if (e.hp <= 0) {
           spawnBlood(e.x, e.y, 35, 6);
           playDeath();
@@ -723,7 +735,7 @@ function update() {
         } else {
           playHit();
         }
-        break;
+        if (!b.pierce) break;
       }
     }
   }
@@ -915,47 +927,85 @@ function drawEnemy(e) {
 
 // Three purely-visual obstacle styles over the same rectangular hitbox, so
 // the arena doesn't read as identical boxes copy-pasted everywhere.
+// Obstacle color themes cycle by level so the arena visibly looks different
+// after each transition (on top of the layout itself regenerating), while
+// keeping each variant's shape/texture identity (corner braces, slats) intact.
+const OBSTACLE_THEMES = [
+  { // rust red (original)
+    plain: { fill: '#2a1818', stroke: '#4a2828' },
+    rust: { fill: '#331c14', stroke: '#6b3a24', accent: 'rgba(180, 100, 60, 0.5)' },
+    crate: { fill: '#231414', stroke: '#4a2828', accent: 'rgba(100, 50, 40, 0.4)' }
+  },
+  { // teal steel
+    plain: { fill: '#182a2a', stroke: '#284a4a' },
+    rust: { fill: '#14332e', stroke: '#246b5a', accent: 'rgba(60, 180, 160, 0.5)' },
+    crate: { fill: '#142323', stroke: '#284a4a', accent: 'rgba(40, 100, 90, 0.4)' }
+  },
+  { // violet
+    plain: { fill: '#241829', stroke: '#402a46' },
+    rust: { fill: '#2e1433', stroke: '#5a246b', accent: 'rgba(160, 60, 180, 0.5)' },
+    crate: { fill: '#201423', stroke: '#402846', accent: 'rgba(90, 40, 100, 0.4)' }
+  },
+  { // olive brass
+    plain: { fill: '#262918', stroke: '#464a28' },
+    rust: { fill: '#332e14', stroke: '#6b5a24', accent: 'rgba(180, 160, 60, 0.5)' },
+    crate: { fill: '#232014', stroke: '#4a4628', accent: 'rgba(100, 90, 40, 0.4)' }
+  },
+  { // indigo
+    plain: { fill: '#181c29', stroke: '#283246' },
+    rust: { fill: '#141c33', stroke: '#24386b', accent: 'rgba(60, 100, 180, 0.5)' },
+    crate: { fill: '#141823', stroke: '#28324a', accent: 'rgba(40, 60, 100, 0.4)' }
+  }
+];
+function currentObstacleTheme() {
+  return OBSTACLE_THEMES[(wave - 1) % OBSTACLE_THEMES.length];
+}
+
 function drawObstacle(rect) {
   const { x, y, w, h, variant } = rect;
+  const theme = currentObstacleTheme();
   if (variant === 1) {
     // rusted container: warm tint, diagonal corner braces
-    ctx.fillStyle = '#331c14';
+    const c = theme.rust;
+    ctx.fillStyle = c.fill;
     ctx.fillRect(x, y, w, h);
-    ctx.strokeStyle = '#6b3a24';
+    ctx.strokeStyle = c.stroke;
     ctx.lineWidth = 2;
     ctx.strokeRect(x, y, w, h);
-    ctx.strokeStyle = 'rgba(180, 100, 60, 0.5)';
+    ctx.strokeStyle = c.accent;
     ctx.lineWidth = 3;
-    const c = Math.min(w, h) * 0.25;
+    const cl = Math.min(w, h) * 0.25;
     ctx.beginPath();
-    ctx.moveTo(x, y + c); ctx.lineTo(x + c, y);
-    ctx.moveTo(x + w - c, y); ctx.lineTo(x + w, y + c);
-    ctx.moveTo(x + w, y + h - c); ctx.lineTo(x + w - c, y + h);
-    ctx.moveTo(x + c, y + h); ctx.lineTo(x, y + h - c);
+    ctx.moveTo(x, y + cl); ctx.lineTo(x + cl, y);
+    ctx.moveTo(x + w - cl, y); ctx.lineTo(x + w, y + cl);
+    ctx.moveTo(x + w, y + h - cl); ctx.lineTo(x + w - cl, y + h);
+    ctx.moveTo(x + cl, y + h); ctx.lineTo(x, y + h - cl);
     ctx.stroke();
   } else if (variant === 2) {
     // wooden crate: darker fill, slat lines
-    ctx.fillStyle = '#231414';
+    const c = theme.crate;
+    ctx.fillStyle = c.fill;
     ctx.fillRect(x, y, w, h);
-    ctx.strokeStyle = '#4a2828';
+    ctx.strokeStyle = c.stroke;
     ctx.lineWidth = 2;
     ctx.strokeRect(x, y, w, h);
-    ctx.strokeStyle = 'rgba(100, 50, 40, 0.4)';
+    ctx.strokeStyle = c.accent;
     ctx.lineWidth = 1;
     ctx.beginPath();
     ctx.moveTo(x, y + h * 0.33); ctx.lineTo(x + w, y + h * 0.33);
     ctx.moveTo(x, y + h * 0.66); ctx.lineTo(x + w, y + h * 0.66);
     ctx.stroke();
   } else {
-    ctx.fillStyle = '#2a1818';
+    const c = theme.plain;
+    ctx.fillStyle = c.fill;
     ctx.fillRect(x, y, w, h);
-    ctx.strokeStyle = '#4a2828';
+    ctx.strokeStyle = c.stroke;
     ctx.lineWidth = 2;
     ctx.strokeRect(x, y, w, h);
   }
 }
 
-const PICKUP_COLORS = { health: '#3f3', spread: '#ff0', rapid: '#3cf', life: '#ffd700' };
+const PICKUP_COLORS = { health: '#3f3', spread: '#ff0', rapid: '#3cf', shield: '#7cf', piercing: '#f0f', life: '#ffd700' };
 
 function drawPickup(p) {
   const bobY = Math.sin(p.bob) * 4;
@@ -1057,7 +1107,7 @@ function draw() {
   }
 
   for (const b of bullets) {
-    ctx.fillStyle = '#ffd400';
+    ctx.fillStyle = b.pierce ? '#8ff6ff' : '#ffd400';
     ctx.beginPath();
     ctx.arc(b.x, b.y, b.r, 0, Math.PI * 2);
     ctx.fill();
@@ -1081,6 +1131,17 @@ function draw() {
   ctx.rotate(player.angle);
   drawPlayerSprite(player.r);
   ctx.restore();
+
+  if (player.shield > 0) {
+    ctx.save();
+    const pct = Math.min(1, player.shield / GameCore.SHIELD_AMOUNT);
+    ctx.strokeStyle = `rgba(120, 200, 255, ${0.5 + 0.3 * Math.sin(Date.now() / 150)})`;
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.arc(player.x, player.y, player.r + 8, 0, Math.PI * 2 * pct);
+    ctx.stroke();
+    ctx.restore();
+  }
 
   if (levelBannerTimer > 0) {
     const alpha = Math.min(1, levelBannerTimer / 30);

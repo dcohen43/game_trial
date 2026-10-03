@@ -216,10 +216,10 @@ const ENEMY_KINDS = GameCore.ENEMY_KINDS;
 // ===== Game state =====
 const REGEN_GRACE_FRAMES = 180; // ~3s without taking a hit before passive regen kicks in
 const REGEN_RATE = 0.04; // HP/frame (~2.4 HP/s) once regen is active — a slow trickle, not a substitute for pickups
-let player = { x: 0, y: 0, r: 16, speed: 4, health: 100, maxHealth: 100, hurtCooldown: 0, weapon: 'normal', weaponTimer: 0, lives: GameCore.STARTING_LIVES };
+let player = { x: 0, y: 0, r: 16, speed: 4, health: 100, maxHealth: 100, hurtCooldown: 0, weapon: 'normal', weaponTimer: 0, lives: GameCore.STARTING_LIVES, shield: 0 };
 let bullets = [], enemies = [], particles = [], splatters = [], obstacles = [], enemyProjectiles = [], pickups = [];
 let score = 0, wave = 1, enemiesToSpawn = 0, spawnTimer = 0, fireTimer = 0, running = false, shake = 0, levelBannerTimer = 0, regenGrace = 0;
-let comboCount = 0, comboTimer = 0, countdownTimer = 0;
+let comboCount = 0, comboTimer = 0, countdownTimer = 0, nextEnemyId = 1;
 
 function updateLivesHud() {
   livesEl.textContent = `Lives: ${player.lives}`;
@@ -268,7 +268,9 @@ function damagePlayer(amount, hurtCooldownFrames, shakeAmount) {
   regenGrace = REGEN_GRACE_FRAMES;
   playPlayerHurt();
   shake = shakeAmount;
-  const lethal = GameCore.applyDamage(player, amount);
+  const leftover = GameCore.absorbWithShield(player, amount);
+  if (leftover <= 0) return true;
+  const lethal = GameCore.applyDamage(player, leftover);
   if (lethal) {
     const result = GameCore.resolveLethalHit(player);
     updateLivesHud();
@@ -282,6 +284,19 @@ function damagePlayer(amount, hurtCooldownFrames, shakeAmount) {
     healthBar.style.width = Math.max(0, player.health) + '%';
   }
   return true;
+}
+
+// Obstacle color themes cycle by level so the arena visibly looks different
+// after each transition, on top of the layout itself regenerating.
+const OBSTACLE_THEMES = [
+  { fill: '#331c1c', stroke: '#6b3a3a' }, // rust red (original)
+  { fill: '#1c2a33', stroke: '#3a6b6b' }, // teal steel
+  { fill: '#2a1c33', stroke: '#6b3a6b' }, // violet
+  { fill: '#2a2a1c', stroke: '#6b6b3a' }, // olive brass
+  { fill: '#1c1c33', stroke: '#3a3a6b' }  // indigo
+];
+function currentObstacleTheme() {
+  return OBSTACLE_THEMES[(wave - 1) % OBSTACLE_THEMES.length];
 }
 
 function spawnObstacles() {
@@ -313,7 +328,7 @@ function circleIntersectsAnyObstacle(cx, cy, cr) {
 }
 
 function reset() {
-  player = { x: canvas.width / 2, y: canvas.height / 2, r: 16, speed: 4, health: 100, maxHealth: 100, hurtCooldown: 0, weapon: 'normal', weaponTimer: 0, lives: GameCore.STARTING_LIVES };
+  player = { x: canvas.width / 2, y: canvas.height / 2, r: 16, speed: 4, health: 100, maxHealth: 100, hurtCooldown: 0, weapon: 'normal', weaponTimer: 0, lives: GameCore.STARTING_LIVES, shield: 0 };
   bullets = [];
   enemies = [];
   particles = [];
@@ -352,6 +367,7 @@ function spawnEnemy() {
   const kind = GameCore.pickEnemyKind(wave);
   const stats = GameCore.enemyStatsForLevel(kind, wave);
   enemies.push({
+    id: nextEnemyId++,
     kind,
     x, y,
     r: stats.r + Math.random() * 4,
@@ -412,7 +428,7 @@ function spawnSparks(x, y) {
 }
 
 function maybeDropPickup(x, y) {
-  const type = GameCore.rollPickupDrop();
+  const type = GameCore.rollPickupDrop(wave);
   if (!type) return;
   pickups.push({ x, y, type, r: 12, bob: Math.random() * Math.PI * 2 });
 }
@@ -430,12 +446,15 @@ function fireCooldown() {
 
 function shoot() {
   const angle = Math.atan2(mouse.y - player.y, mouse.x - player.x);
+  const pierce = player.weapon === 'piercing';
   const makeBullet = a => bullets.push({
     x: player.x + Math.cos(a) * player.r,
     y: player.y + Math.sin(a) * player.r,
     vx: Math.cos(a) * 11,
     vy: Math.sin(a) * 11,
-    r: 4
+    r: pierce ? 5 : 4,
+    pierce,
+    hitIds: pierce ? new Set() : null
   });
   if (player.weapon === 'spread') {
     makeBullet(angle - 0.22);
@@ -517,6 +536,7 @@ function update() {
     levelBannerTimer = 100;
     spawnObstacles();
     resolveObstacleCollisions(player); // in case a new wall landed on the player
+    for (const p of pickups) resolveObstacleCollisions(p); // ...or on a dropped pickup
     countdownTimer = GameCore.LEVEL_COUNTDOWN_FRAMES;
   }
 
@@ -547,10 +567,15 @@ function update() {
     }
     for (let j = enemies.length - 1; j >= 0; j--) {
       const e = enemies[j];
+      if (b.pierce && b.hitIds.has(e.id)) continue;
       if (GameCore.circlesOverlap(b.x, b.y, b.r, e.x, e.y, e.r)) {
         e.hp--;
         spawnBlood(b.x, b.y, 6, 3);
-        bullets.splice(i, 1);
+        if (b.pierce) {
+          b.hitIds.add(e.id);
+        } else {
+          bullets.splice(i, 1);
+        }
         if (e.hp <= 0) {
           spawnBlood(e.x, e.y, 35, 6);
           playDeath();
@@ -561,7 +586,7 @@ function update() {
         } else {
           playHit();
         }
-        break;
+        if (!b.pierce) break;
       }
     }
   }
@@ -751,7 +776,7 @@ function drawEnemy(e) {
   ctx.fillRect(e.x - e.r, e.y - e.r - 8, (e.r * 2) * (e.hp / e.maxHp), 4);
 }
 
-const PICKUP_COLORS = { health: '#3f3', spread: '#ff0', rapid: '#3cf', life: '#ffd700' };
+const PICKUP_COLORS = { health: '#3f3', spread: '#ff0', rapid: '#3cf', shield: '#7cf', piercing: '#f0f', life: '#ffd700' };
 
 function drawPickup(p) {
   const bobY = Math.sin(p.bob) * 4;
@@ -831,10 +856,11 @@ function draw() {
     ctx.fill();
   }
 
+  const obstacleTheme = currentObstacleTheme();
   for (const rect of obstacles) {
-    ctx.fillStyle = '#331c1c';
+    ctx.fillStyle = obstacleTheme.fill;
     ctx.fillRect(rect.x, rect.y, rect.w, rect.h);
-    ctx.strokeStyle = '#6b3a3a';
+    ctx.strokeStyle = obstacleTheme.stroke;
     ctx.lineWidth = 2;
     ctx.strokeRect(rect.x, rect.y, rect.w, rect.h);
   }
@@ -859,7 +885,7 @@ function draw() {
   }
 
   for (const b of bullets) {
-    ctx.fillStyle = '#ffd400';
+    ctx.fillStyle = b.pierce ? '#8ff6ff' : '#ffd400';
     ctx.beginPath();
     ctx.arc(b.x, b.y, b.r, 0, Math.PI * 2);
     ctx.fill();
@@ -872,6 +898,17 @@ function draw() {
   ctx.rotate(angle);
   drawPlayerSprite(player.r);
   ctx.restore();
+
+  if (player.shield > 0) {
+    ctx.save();
+    const pct = Math.min(1, player.shield / GameCore.SHIELD_AMOUNT);
+    ctx.strokeStyle = `rgba(120, 200, 255, ${0.5 + 0.3 * Math.sin(Date.now() / 150)})`;
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.arc(player.x, player.y, player.r + 8, 0, Math.PI * 2 * pct);
+    ctx.stroke();
+    ctx.restore();
+  }
 
   if (levelBannerTimer > 0) {
     const alpha = Math.min(1, levelBannerTimer / 30);

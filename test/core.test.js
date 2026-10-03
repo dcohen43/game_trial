@@ -71,6 +71,25 @@ describe('enemyStatsForLevel', () => {
   test('throws on an unknown enemy kind', () => {
     assert.throws(() => GameCore.enemyStatsForLevel('dragon', 1));
   });
+
+  test('omitting spaceScale behaves the same as passing 1 (full-size arena)', () => {
+    const a = GameCore.enemyStatsForLevel('grunt', 5);
+    const b = GameCore.enemyStatsForLevel('grunt', 5, 1);
+    assert.equal(a.speed, b.speed);
+  });
+
+  test('a smaller spaceScale mildly reduces speed, never by more than 15%', () => {
+    const full = GameCore.enemyStatsForLevel('grunt', 5, 1).speed;
+    const cramped = GameCore.enemyStatsForLevel('grunt', 5, 0).speed; // smallest possible arena
+    assert.ok(cramped < full);
+    assert.ok(cramped >= full * 0.85 - 1e-9);
+  });
+
+  test('spaceScale does not affect hp', () => {
+    const full = GameCore.enemyStatsForLevel('grunt', 5, 1).hp;
+    const cramped = GameCore.enemyStatsForLevel('grunt', 5, 0.55).hp;
+    assert.equal(full, cramped);
+  });
 });
 
 describe('enemiesPerLevel', () => {
@@ -78,6 +97,21 @@ describe('enemiesPerLevel', () => {
     assert.equal(GameCore.enemiesPerLevel(1), 5);
     assert.equal(GameCore.enemiesPerLevel(2), 6);
     assert.equal(GameCore.enemiesPerLevel(10), 14);
+  });
+
+  test('omitting spaceScale behaves the same as passing 1 (full-size arena)', () => {
+    assert.equal(GameCore.enemiesPerLevel(5), GameCore.enemiesPerLevel(5, 1));
+  });
+
+  test('a smaller spaceScale reduces the count proportionally', () => {
+    const full = GameCore.enemiesPerLevel(10, 1);
+    const cramped = GameCore.enemiesPerLevel(10, 0.55);
+    assert.ok(cramped < full);
+    assert.equal(cramped, Math.round(14 * 0.55));
+  });
+
+  test('never drops below 3, even on the smallest arena at level 1', () => {
+    assert.ok(GameCore.enemiesPerLevel(1, 0.1) >= 3);
   });
 });
 
@@ -164,41 +198,65 @@ describe('fireCooldown', () => {
     assert.equal(GameCore.fireCooldown('normal'), 8);
     assert.equal(GameCore.fireCooldown('spread'), 8);
   });
+
+  test('piercing is slower than normal, balanced by hitting multiple enemies', () => {
+    assert.ok(GameCore.fireCooldown('piercing') > GameCore.fireCooldown('normal'));
+  });
+});
+
+describe('pickupWeightsForLevel', () => {
+  test('every level\'s weights are aligned to PICKUP_TYPES and sum to 1', () => {
+    for (const level of [1, 2, GameCore.PICKUP_ADVANCED_LEVEL, 10]) {
+      const weights = GameCore.pickupWeightsForLevel(level);
+      assert.equal(weights.length, GameCore.PICKUP_TYPES.length);
+      const sum = weights.reduce((a, b) => a + b, 0);
+      assert.ok(Math.abs(sum - 1) < 1e-9, `level ${level} weights sum to ${sum}`);
+    }
+  });
+
+  test('shield/piercing/life are locked out before the advanced level', () => {
+    const weights = GameCore.pickupWeightsForLevel(GameCore.PICKUP_ADVANCED_LEVEL - 1);
+    for (const kind of ['shield', 'piercing', 'life']) {
+      assert.equal(weights[GameCore.PICKUP_TYPES.indexOf(kind)], 0);
+    }
+  });
+
+  test('shield/piercing/life unlock at the advanced level', () => {
+    const weights = GameCore.pickupWeightsForLevel(GameCore.PICKUP_ADVANCED_LEVEL);
+    for (const kind of ['shield', 'piercing', 'life']) {
+      assert.ok(weights[GameCore.PICKUP_TYPES.indexOf(kind)] > 0);
+    }
+  });
 });
 
 describe('rollPickupDrop', () => {
   test('returns null when the drop roll misses', () => {
-    assert.equal(GameCore.rollPickupDrop(fakeRng(0.5)), null);
+    assert.equal(GameCore.rollPickupDrop(1, fakeRng(0.5)), null);
   });
 
   test('returns a pickup type when the drop roll hits', () => {
     // first call: drop chance roll (< 0.18 hits); second call: which type
-    const type = GameCore.rollPickupDrop(fakeRng(0.0, 0.0));
+    const type = GameCore.rollPickupDrop(1, fakeRng(0.0, 0.0));
     assert.equal(GameCore.PICKUP_TYPES.includes(type), true);
   });
 
-  test('type roll maps across the full PICKUP_TYPES range', () => {
-    const first = GameCore.rollPickupDrop(fakeRng(0.0, 0.0));
-    const last = GameCore.rollPickupDrop(fakeRng(0.0, 0.999));
+  test('type roll maps across the full weighted range for a given level', () => {
+    const first = GameCore.rollPickupDrop(1, fakeRng(0.0, 0.0));
+    const last = GameCore.rollPickupDrop(1, fakeRng(0.0, 0.999));
     assert.equal(first, GameCore.PICKUP_TYPES[0]);
-    assert.equal(last, GameCore.PICKUP_TYPES[GameCore.PICKUP_TYPES.length - 1]);
+    // early levels: 'rapid' (index 2) is the last pickup with nonzero weight
+    assert.equal(last, 'rapid');
   });
 
-  test('weights are aligned to PICKUP_TYPES and sum to 1', () => {
-    assert.equal(GameCore.PICKUP_WEIGHTS.length, GameCore.PICKUP_TYPES.length);
-    const sum = GameCore.PICKUP_WEIGHTS.reduce((a, b) => a + b, 0);
-    assert.ok(Math.abs(sum - 1) < 1e-9);
+  test('before the advanced level, only the basic three pickups ever drop', () => {
+    for (const roll of [0, 0.1, 0.3, 0.5, 0.7, 0.9, 0.999]) {
+      const type = GameCore.rollPickupDrop(1, fakeRng(0.0, roll));
+      assert.ok(['health', 'spread', 'rapid'].includes(type));
+    }
   });
 
-  test('life is the rarest pickup type (smallest weight)', () => {
-    const lifeIndex = GameCore.PICKUP_TYPES.indexOf('life');
-    const lifeWeight = GameCore.PICKUP_WEIGHTS[lifeIndex];
-    assert.ok(lifeWeight < Math.max(...GameCore.PICKUP_WEIGHTS.filter((_, i) => i !== lifeIndex)));
-  });
-
-  test('type roll lands on "life" at the top of the weighted range', () => {
-    // cumulative weights: health .40, spread .65, rapid .90, life 1.00
-    const type = GameCore.rollPickupDrop(fakeRng(0.0, 0.95));
+  test('at the advanced level, a high roll can land on "life"', () => {
+    const type = GameCore.rollPickupDrop(GameCore.PICKUP_ADVANCED_LEVEL, fakeRng(0.0, 0.999));
     assert.equal(type, 'life');
   });
 });
@@ -233,6 +291,48 @@ describe('applyPickupEffect', () => {
     const player = { health: 100, maxHealth: 100, weapon: 'normal', weaponTimer: 0, lives: GameCore.MAX_LIVES };
     GameCore.applyPickupEffect(player, 'life');
     assert.equal(player.lives, GameCore.MAX_LIVES);
+  });
+
+  test('shield pickup sets the shield to SHIELD_AMOUNT', () => {
+    const player = { health: 100, maxHealth: 100, weapon: 'normal', weaponTimer: 0, shield: 0 };
+    GameCore.applyPickupEffect(player, 'shield');
+    assert.equal(player.shield, GameCore.SHIELD_AMOUNT);
+  });
+
+  test('a second shield pickup refreshes rather than stacking', () => {
+    const player = { health: 100, maxHealth: 100, weapon: 'normal', weaponTimer: 0, shield: 10 };
+    GameCore.applyPickupEffect(player, 'shield');
+    assert.equal(player.shield, GameCore.SHIELD_AMOUNT);
+  });
+
+  test('piercing pickup sets the weapon like other weapon pickups', () => {
+    const player = { health: 100, maxHealth: 100, weapon: 'normal', weaponTimer: 0 };
+    GameCore.applyPickupEffect(player, 'piercing');
+    assert.equal(player.weapon, 'piercing');
+    assert.equal(player.weaponTimer, 480);
+  });
+});
+
+describe('absorbWithShield', () => {
+  test('a full shield absorbs damage up to its capacity', () => {
+    const player = { shield: 50 };
+    const leftover = GameCore.absorbWithShield(player, 20);
+    assert.equal(leftover, 0);
+    assert.equal(player.shield, 30);
+  });
+
+  test('damage exceeding the shield spills over to the returned leftover', () => {
+    const player = { shield: 15 };
+    const leftover = GameCore.absorbWithShield(player, 20);
+    assert.equal(leftover, 5);
+    assert.equal(player.shield, 0);
+  });
+
+  test('no shield passes all damage through unchanged', () => {
+    const player = { shield: 0 };
+    assert.equal(GameCore.absorbWithShield(player, 20), 20);
+    const noShieldField = {};
+    assert.equal(GameCore.absorbWithShield(noShieldField, 20), 20);
   });
 });
 

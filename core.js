@@ -29,17 +29,29 @@
 
   // Deterministic part of an enemy's stats at a given level (excludes the
   // small per-spawn random jitter applied on top in spawnEnemy()).
-  function enemyStatsForLevel(kind, level) {
+  //
+  // spaceScale (0..1, default 1) lets callers tone speed down on cramped
+  // arenas — e.g. a phone vs. a tablet — so the same level doesn't feel
+  // harder just because there's less room to dodge in. Scaled mildly
+  // (0.85-1.0x) rather than linearly: enemies should still feel like a
+  // real threat on a small screen, just not an unfairly fast one.
+  function enemyStatsForLevel(kind, level, spaceScale) {
+    spaceScale = spaceScale == null ? 1 : spaceScale;
     const def = ENEMY_KINDS[kind];
     if (!def) throw new Error(`Unknown enemy kind: ${kind}`);
-    const speed = (1 + Math.min(level * 0.08, 2.0)) * def.speedMul;
+    const speed = (1 + Math.min(level * 0.08, 2.0)) * def.speedMul * (0.85 + 0.15 * spaceScale);
     const hp = Math.round((2 + Math.floor(level / 4)) * def.hpMul);
     return { speed, hp, r: def.baseR, contactDamage: def.contactDamage, hue: def.hue };
   }
 
-  // How many enemies spawn in a given level's wave.
-  function enemiesPerLevel(level) {
-    return 4 + level;
+  // How many enemies spawn in a given level's wave. spaceScale (0..1,
+  // default 1) scales the count down on smaller arenas so a packed phone
+  // screen isn't just as crowded as a roomy tablet one at the same level.
+  // Floors at 3 so early levels on the smallest screens still feel like a
+  // wave, not a trickle.
+  function enemiesPerLevel(level, spaceScale) {
+    spaceScale = spaceScale == null ? 1 : spaceScale;
+    return Math.max(3, Math.round((4 + level) * spaceScale));
   }
 
   function rectsOverlap(a, b) {
@@ -81,24 +93,41 @@
     return false;
   }
 
-  // Fire-rate cooldown (frames between shots) for the player's current weapon.
+  // Fire-rate cooldown (frames between shots) for the player's current
+  // weapon. Piercing is slower than rapid/normal — it's balanced by hitting
+  // multiple enemies per shot instead of firing quickly.
   function fireCooldown(weapon) {
-    return weapon === 'rapid' ? 4 : 8;
+    if (weapon === 'rapid') return 4;
+    if (weapon === 'piercing') return 11;
+    return 8;
   }
 
   // Whether a kill drops a pickup, and which type. Injectable rng for tests.
-  // Weighted rather than uniform: 'life' is a rare bonus, not a regular drop.
-  const PICKUP_TYPES = ['health', 'spread', 'rapid', 'life'];
-  const PICKUP_WEIGHTS = [0.40, 0.25, 0.25, 0.10]; // must sum to 1, aligned by index to PICKUP_TYPES
+  // Weighted and level-gated rather than flat/uniform: 'shield' and
+  // 'piercing' are stronger than the basics, so they only enter the drop
+  // pool from level 3 onward — early levels stay simple (health/spread/
+  // rapid only), and power grows with progression rather than being
+  // available (and diluting the common drops) from the very first kill.
+  const PICKUP_TYPES = ['health', 'spread', 'rapid', 'shield', 'piercing', 'life'];
   const PICKUP_DROP_CHANCE = 0.18;
+  const PICKUP_ADVANCED_LEVEL = 3; // level at which shield/piercing/life unlock
 
-  function rollPickupDrop(rng) {
+  // Weights aligned by index to PICKUP_TYPES; each set must sum to 1.
+  function pickupWeightsForLevel(level) {
+    if (level < PICKUP_ADVANCED_LEVEL) {
+      return [0.50, 0.25, 0.25, 0, 0, 0];
+    }
+    return [0.30, 0.15, 0.15, 0.17, 0.13, 0.10];
+  }
+
+  function rollPickupDrop(level, rng) {
     rng = rng || Math.random;
     if (rng() > PICKUP_DROP_CHANCE) return null;
+    const weights = pickupWeightsForLevel(level);
     const typeRoll = rng();
     let cumulative = 0;
     for (let i = 0; i < PICKUP_TYPES.length; i++) {
-      cumulative += PICKUP_WEIGHTS[i];
+      cumulative += weights[i];
       if (typeRoll < cumulative) return PICKUP_TYPES[i];
     }
     return PICKUP_TYPES[PICKUP_TYPES.length - 1];
@@ -107,6 +136,7 @@
   const STARTING_LIVES = 3;
   const MAX_LIVES = 5;
   const HEALTH_PICKUP_AMOUNT = 30;
+  const SHIELD_AMOUNT = 50; // flat damage-absorption pool, not a timer
 
   // Heals a plain player state object, capped at maxHealth. Pure — no
   // audio/DOM. Used by both health pickups and passive regen, so the cap
@@ -117,13 +147,15 @@
   }
 
   // Applies a pickup's effect to a plain player state object (health,
-  // maxHealth, weapon, weaponTimer, lives). Pure — no audio/DOM. Mutates and
-  // returns player.
+  // maxHealth, weapon, weaponTimer, lives, shield). Pure — no audio/DOM.
+  // Mutates and returns player.
   function applyPickupEffect(player, pickupType) {
     if (pickupType === 'health') {
       healPlayer(player, HEALTH_PICKUP_AMOUNT);
     } else if (pickupType === 'life') {
       player.lives = Math.min(MAX_LIVES, (player.lives || 0) + 1);
+    } else if (pickupType === 'shield') {
+      player.shield = SHIELD_AMOUNT; // refreshes to full, doesn't stack
     } else {
       player.weapon = pickupType;
       player.weaponTimer = 480;
@@ -136,6 +168,17 @@
   function applyDamage(entity, amount) {
     entity.health -= amount;
     return entity.health <= 0;
+  }
+
+  // Absorbs incoming damage into a player's shield pool first (if any),
+  // returning however much is left over to apply to health. A shield of 0
+  // or undefined just passes the full amount through. Pure — no audio/DOM.
+  // Mutates player.shield.
+  function absorbWithShield(player, amount) {
+    if (!player.shield || player.shield <= 0) return amount;
+    const absorbed = Math.min(player.shield, amount);
+    player.shield -= absorbed;
+    return amount - absorbed;
   }
 
   // Resolves a lethal hit against a player with a .lives field: consumes a
@@ -186,19 +229,22 @@
     circleIntersectsAnyObstacle,
     fireCooldown,
     rollPickupDrop,
+    pickupWeightsForLevel,
     healPlayer,
     applyPickupEffect,
     applyDamage,
+    absorbWithShield,
     resolveLethalHit,
     comboScore,
     secondsRemaining,
     LEVEL_COUNTDOWN_FRAMES,
     PICKUP_TYPES,
-    PICKUP_WEIGHTS,
     PICKUP_DROP_CHANCE,
+    PICKUP_ADVANCED_LEVEL,
     STARTING_LIVES,
     MAX_LIVES,
     HEALTH_PICKUP_AMOUNT,
+    SHIELD_AMOUNT,
     BASE_KILL_SCORE,
     COMBO_WINDOW_FRAMES,
     COMBO_MAX_STACK
