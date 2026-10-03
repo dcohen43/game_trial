@@ -274,6 +274,25 @@ describe('comboScore', () => {
   });
 });
 
+describe('secondsRemaining', () => {
+  test('rounds up to the next whole second', () => {
+    assert.equal(GameCore.secondsRemaining(300), 5);
+    assert.equal(GameCore.secondsRemaining(299), 5);
+    assert.equal(GameCore.secondsRemaining(241), 5);
+    assert.equal(GameCore.secondsRemaining(240), 4);
+  });
+
+  test('reaches exactly 1 on the final second, not 0 until frames run out', () => {
+    assert.equal(GameCore.secondsRemaining(60), 1);
+    assert.equal(GameCore.secondsRemaining(1), 1);
+  });
+
+  test('never goes negative', () => {
+    assert.equal(GameCore.secondsRemaining(0), 0);
+    assert.equal(GameCore.secondsRemaining(-30), 0);
+  });
+});
+
 describe('resolveLethalHit', () => {
   test('consumes a life and respawns at full health when lives remain', () => {
     const player = { health: 0, maxHealth: 100, lives: 3 };

@@ -180,7 +180,7 @@ const REGEN_RATE = 0.04; // HP/frame (~2.4 HP/s) once regen is active — a slow
 let player = { x: 0, y: 0, r: 16, speed: 4, health: 100, maxHealth: 100, hurtCooldown: 0, weapon: 'normal', weaponTimer: 0, lives: GameCore.STARTING_LIVES };
 let bullets = [], enemies = [], particles = [], splatters = [], obstacles = [], enemyProjectiles = [], pickups = [];
 let score = 0, wave = 1, enemiesToSpawn = 0, spawnTimer = 0, fireTimer = 0, running = false, shake = 0, levelBannerTimer = 0, regenGrace = 0;
-let comboCount = 0, comboTimer = 0;
+let comboCount = 0, comboTimer = 0, countdownTimer = 0;
 
 function updateLivesHud() {
   livesEl.textContent = `Lives: ${player.lives}`;
@@ -291,6 +291,7 @@ function reset() {
   regenGrace = 0;
   comboCount = 0;
   comboTimer = 0;
+  countdownTimer = 0;
   running = true;
   spawnObstacles();
   healthBar.style.width = '100%';
@@ -459,8 +460,11 @@ function update() {
     fireTimer = fireCooldown();
   }
 
-  // spawn waves
-  if (enemiesToSpawn > 0) {
+  // spawn waves — held off while a level-transition countdown is running,
+  // so the player gets a clear beat to see the regenerated arena.
+  if (countdownTimer > 0) {
+    countdownTimer--;
+  } else if (enemiesToSpawn > 0) {
     spawnTimer--;
     if (spawnTimer <= 0) {
       spawnEnemy();
@@ -474,6 +478,7 @@ function update() {
     levelBannerTimer = 100;
     spawnObstacles();
     resolveObstacleCollisions(player); // in case a new wall landed on the player
+    countdownTimer = GameCore.LEVEL_COUNTDOWN_FRAMES;
   }
 
   if (levelBannerTimer > 0) levelBannerTimer--;
@@ -772,6 +777,34 @@ function draw() {
     ctx.shadowColor = '#800';
     ctx.shadowBlur = 20;
     ctx.fillText(`LEVEL ${wave}`, canvas.width / 2, canvas.height / 2 - 100);
+    ctx.restore();
+  }
+
+  // level-transition countdown: holds the player's attention on the new
+  // arena layout before the next wave's enemies start spawning in.
+  if (countdownTimer > 0) {
+    const seconds = GameCore.secondsRemaining(countdownTimer);
+    const tick = countdownTimer % 60;
+    const scale = 0.7 + (tick / 60) * 0.5;
+    ctx.save();
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#eee';
+    ctx.font = 'bold 20px "Courier New", monospace';
+    ctx.globalAlpha = 0.8;
+    ctx.fillText('NEXT WAVE INCOMING', canvas.width / 2, canvas.height / 2 - 90);
+    ctx.restore();
+
+    ctx.save();
+    ctx.translate(canvas.width / 2, canvas.height / 2);
+    ctx.scale(scale, scale);
+    ctx.globalAlpha = 0.85 + 0.15 * (tick / 60);
+    ctx.fillStyle = '#f33';
+    ctx.font = 'bold 100px "Courier New", monospace';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.shadowColor = '#800';
+    ctx.shadowBlur = 26;
+    ctx.fillText(String(seconds), 0, 0);
     ctx.restore();
   }
 

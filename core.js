@@ -165,6 +165,16 @@
     return Math.round(BASE_KILL_SCORE * (1 + stacks * 0.1));
   }
 
+  // ===== Level transition countdown =====
+  const LEVEL_COUNTDOWN_FRAMES = 300; // 5s at 60fps — holds enemy spawning so
+  // the player gets a clear beat to see the regenerated arena before the
+  // next wave starts, instead of it changing in the same instant combat resumes.
+
+  // Whole seconds remaining to display for a countdown timer in frames.
+  function secondsRemaining(frames) {
+    return Math.max(0, Math.ceil(frames / 60));
+  }
+
   return {
     ENEMY_KINDS,
     pickEnemyKind,
@@ -181,6 +191,8 @@
     applyDamage,
     resolveLethalHit,
     comboScore,
+    secondsRemaining,
+    LEVEL_COUNTDOWN_FRAMES,
     PICKUP_TYPES,
     PICKUP_WEIGHTS,
     PICKUP_DROP_CHANCE,
