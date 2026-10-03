@@ -14,9 +14,48 @@ const finalScoreEl = document.getElementById('final-score');
 const startBtn = document.getElementById('start-btn');
 const restartBtn = document.getElementById('restart-btn');
 
+// Floor grid, pre-rendered to an offscreen canvas and blitted each frame
+// instead of redrawn — cheap regardless of line count, and gives the arena
+// some visual structure instead of a flat, texture-less fill (part of the
+// "colors are too dark" fix: a flat near-black field reads as uniformly
+// dark even when individual elements have decent contrast against it).
+const bgCanvas = document.createElement('canvas');
+const bgCtx = bgCanvas.getContext('2d');
+
+function renderBackground() {
+  bgCanvas.width = canvas.width + 40;
+  bgCanvas.height = canvas.height + 40;
+  bgCtx.fillStyle = '#20100f';
+  bgCtx.fillRect(0, 0, bgCanvas.width, bgCanvas.height);
+
+  bgCtx.strokeStyle = 'rgba(255, 70, 70, 0.07)';
+  bgCtx.lineWidth = 1;
+  const spacing = 56;
+  bgCtx.beginPath();
+  for (let x = 0; x < bgCanvas.width; x += spacing) {
+    bgCtx.moveTo(x + 0.5, 0);
+    bgCtx.lineTo(x + 0.5, bgCanvas.height);
+  }
+  for (let y = 0; y < bgCanvas.height; y += spacing) {
+    bgCtx.moveTo(0, y + 0.5);
+    bgCtx.lineTo(bgCanvas.width, y + 0.5);
+  }
+  bgCtx.stroke();
+
+  const grad = bgCtx.createRadialGradient(
+    bgCanvas.width / 2, bgCanvas.height / 2, Math.min(bgCanvas.width, bgCanvas.height) * 0.25,
+    bgCanvas.width / 2, bgCanvas.height / 2, Math.max(bgCanvas.width, bgCanvas.height) * 0.7
+  );
+  grad.addColorStop(0, 'rgba(0,0,0,0)');
+  grad.addColorStop(1, 'rgba(0,0,0,0.45)');
+  bgCtx.fillStyle = grad;
+  bgCtx.fillRect(0, 0, bgCanvas.width, bgCanvas.height);
+}
+
 function resize() {
   canvas.width = window.innerWidth;
   canvas.height = window.innerHeight;
+  renderBackground();
 }
 window.addEventListener('resize', resize);
 resize();
@@ -621,38 +660,90 @@ function update() {
 }
 
 // ===== Draw =====
+// Small glowing dot (two-layer: soft translucent halo + solid core) used for
+// enemy eyes — reads as "glowing" without the per-frame cost of shadowBlur.
+function drawGlowDot(x, y, radius, rgb) {
+  ctx.fillStyle = `rgba(${rgb}, 0.35)`;
+  ctx.beginPath();
+  ctx.arc(x, y, radius * 2.2, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = `rgba(${rgb}, 1)`;
+  ctx.beginPath();
+  ctx.arc(x, y, radius, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+// Darker, more saturated bodies (vs. the old pastel-ish HSL fills) plus a
+// glowing-red danger outline and eyes read as threatening rather than
+// decorative — color psychology: saturated red = danger, and the outline
+// gives every enemy a consistent "hostile" visual language regardless of
+// its base hue. Spitters get toxic green eyes instead, to read as the
+// ranged/poison-flavored threat.
 function drawEnemy(e) {
+  const eyeRgb = e.kind === 'spitter' ? '140, 255, 70' : '255, 40, 40';
+
   if (e.kind === 'brute') {
     ctx.save();
     ctx.translate(e.x, e.y);
-    ctx.fillStyle = `hsl(${e.hue}, 75%, 32%)`;
+    ctx.strokeStyle = 'rgba(255, 30, 30, 0.55)';
+    ctx.lineWidth = 3;
     ctx.beginPath();
     for (let i = 0; i < 6; i++) {
       const a = (Math.PI * 2 / 6) * i;
-      const r = e.r * (i % 2 === 0 ? 1 : 0.85);
-      ctx.lineTo(Math.cos(a) * r, Math.sin(a) * r);
+      const rr = (e.r + 2) * (i % 2 === 0 ? 1 : 0.85);
+      ctx.lineTo(Math.cos(a) * rr, Math.sin(a) * rr);
+    }
+    ctx.closePath();
+    ctx.stroke();
+    ctx.fillStyle = `hsl(${e.hue}, 85%, 20%)`;
+    ctx.beginPath();
+    for (let i = 0; i < 6; i++) {
+      const a = (Math.PI * 2 / 6) * i;
+      const rr = e.r * (i % 2 === 0 ? 1 : 0.85);
+      ctx.lineTo(Math.cos(a) * rr, Math.sin(a) * rr);
     }
     ctx.closePath();
     ctx.fill();
+    drawGlowDot(e.r * 0.28, -e.r * 0.22, e.r * 0.14, eyeRgb);
+    drawGlowDot(e.r * 0.28, e.r * 0.22, e.r * 0.14, eyeRgb);
     ctx.restore();
   } else if (e.kind === 'spitter') {
     ctx.save();
     ctx.translate(e.x, e.y);
     const angle = Math.atan2(player.y - e.y, player.x - e.x);
     ctx.rotate(angle);
-    ctx.fillStyle = `hsl(${e.hue}, 70%, 45%)`;
+    ctx.strokeStyle = 'rgba(255, 30, 30, 0.5)';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(e.r + 2, 0);
+    ctx.lineTo(-(e.r + 2) * 0.7, (e.r + 2) * 0.8);
+    ctx.lineTo(-(e.r + 2) * 0.7, -(e.r + 2) * 0.8);
+    ctx.closePath();
+    ctx.stroke();
+    ctx.fillStyle = `hsl(${e.hue}, 85%, 28%)`;
     ctx.beginPath();
     ctx.moveTo(e.r, 0);
     ctx.lineTo(-e.r * 0.7, e.r * 0.8);
     ctx.lineTo(-e.r * 0.7, -e.r * 0.8);
     ctx.closePath();
     ctx.fill();
+    drawGlowDot(e.r * 0.25, 0, e.r * 0.18, eyeRgb);
     ctx.restore();
   } else {
-    ctx.fillStyle = `hsl(${e.hue}, 70%, 35%)`;
+    ctx.save();
+    ctx.translate(e.x, e.y);
+    ctx.strokeStyle = 'rgba(255, 30, 30, 0.5)';
+    ctx.lineWidth = 2;
     ctx.beginPath();
-    ctx.arc(e.x, e.y, e.r, 0, Math.PI * 2);
+    ctx.arc(0, 0, e.r + 2, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.fillStyle = `hsl(${e.hue}, 80%, 20%)`;
+    ctx.beginPath();
+    ctx.arc(0, 0, e.r, 0, Math.PI * 2);
     ctx.fill();
+    drawGlowDot(e.r * 0.3, -e.r * 0.28, e.r * 0.15, eyeRgb);
+    drawGlowDot(e.r * 0.3, e.r * 0.28, e.r * 0.15, eyeRgb);
+    ctx.restore();
   }
   ctx.fillStyle = '#300';
   ctx.fillRect(e.x - e.r, e.y - e.r - 8, e.r * 2, 4);
@@ -681,11 +772,27 @@ function drawPickup(p) {
 
 // Top-down tactical soldier: olive body, darker helmet offset toward the
 // facing direction, dark vest straps, and a long rifle (stock behind, barrel
-// well in front) in place of the old plain circle + stub. Call with the
-// context already translated to the player's position and rotated to its
-// facing angle.
+// well in front). A bright cyan-white glow + rim (a color used nowhere else
+// in the game) sits behind/around the body specifically so the player is
+// never lost against the dark arena, regardless of what's rendered under or
+// near it — a "beacon" independent of the tactical color scheme. Call with
+// the context already translated to the player's position and rotated to
+// its facing angle.
 function drawPlayerSprite(r) {
-  ctx.fillStyle = '#6b7d45';
+  const glow = ctx.createRadialGradient(0, 0, r * 0.4, 0, 0, r * 2.2);
+  glow.addColorStop(0, 'rgba(130, 230, 255, 0.55)');
+  glow.addColorStop(1, 'rgba(130, 230, 255, 0)');
+  ctx.fillStyle = glow;
+  ctx.beginPath();
+  ctx.arc(0, 0, r * 2.2, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.fillStyle = '#8fe0ff';
+  ctx.beginPath();
+  ctx.arc(0, 0, r + 2.5, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.fillStyle = '#7a9150';
   ctx.beginPath();
   ctx.arc(0, 0, r, 0, Math.PI * 2);
   ctx.fill();
@@ -693,7 +800,7 @@ function drawPlayerSprite(r) {
   ctx.lineWidth = 2;
   ctx.stroke();
 
-  ctx.fillStyle = '#4a5a30';
+  ctx.fillStyle = '#56682f';
   ctx.beginPath();
   ctx.arc(r * 0.2, 0, r * 0.55, 0, Math.PI * 2);
   ctx.fill();
@@ -715,8 +822,7 @@ function draw() {
     ctx.translate((Math.random() - 0.5) * shake, (Math.random() - 0.5) * shake);
   }
 
-  ctx.fillStyle = '#1a0e0e';
-  ctx.fillRect(-20, -20, canvas.width + 40, canvas.height + 40);
+  ctx.drawImage(bgCanvas, -20, -20);
 
   for (const s of splatters) {
     ctx.fillStyle = `rgba(120, 0, 10, ${s.alpha})`;
@@ -726,9 +832,9 @@ function draw() {
   }
 
   for (const rect of obstacles) {
-    ctx.fillStyle = '#2a1818';
+    ctx.fillStyle = '#331c1c';
     ctx.fillRect(rect.x, rect.y, rect.w, rect.h);
-    ctx.strokeStyle = '#4a2828';
+    ctx.strokeStyle = '#6b3a3a';
     ctx.lineWidth = 2;
     ctx.strokeRect(rect.x, rect.y, rect.w, rect.h);
   }
