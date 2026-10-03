@@ -326,12 +326,17 @@ const controlSizeSlider = document.getElementById('control-size-slider');
 const controlSizeValueEl = document.getElementById('control-size-value');
 
 function loadControlSize() {
+  const min = parseInt(controlSizeSlider.min, 10);
+  const max = parseInt(controlSizeSlider.max, 10);
+  let v;
   try {
-    const v = parseInt(localStorage.getItem('carnageArenaControlSize'), 10);
-    return isNaN(v) ? 190 : v;
+    v = parseInt(localStorage.getItem('carnageArenaControlSize'), 10);
   } catch (e) {
-    return 190;
+    v = NaN;
   }
+  if (isNaN(v)) v = 150;
+  // Clamp in case a stored value predates a narrower slider range.
+  return Math.min(max, Math.max(min, v));
 }
 function saveControlSize(v) {
   try { localStorage.setItem('carnageArenaControlSize', v); } catch (e) { /* ignore */ }
@@ -518,6 +523,14 @@ function endGame() {
   gameoverEl.classList.remove('hidden');
 }
 
+// Shortest signed angular distance from `from` to `to`, wrapped to [-pi, pi].
+function angleShortestDelta(to, from) {
+  let d = to - from;
+  while (d > Math.PI) d -= Math.PI * 2;
+  while (d < -Math.PI) d += Math.PI * 2;
+  return d;
+}
+
 // ===== Update =====
 function update() {
   if (!running) return;
@@ -545,11 +558,15 @@ function update() {
     }
   }
 
-  // aim: read the stick's current direction directly, every frame — not a
-  // delta. Holding it deflected in a direction IS the facing, immediately.
+  // aim: the stick's current direction is the target facing, read directly
+  // every frame — not a delta, never drifts. The player's actual angle
+  // eases toward that target each frame (shortest-path) rather than
+  // snapping to it instantly, which smooths out rotation between whatever
+  // rate touch samples actually arrive at.
   const aimDist = Math.hypot(aimStick.dx, aimStick.dy);
   if (aimDist > AIM_DEADZONE) {
-    player.angle = Math.atan2(aimStick.dy, aimStick.dx);
+    const targetAngle = Math.atan2(aimStick.dy, aimStick.dx);
+    player.angle += angleShortestDelta(targetAngle, player.angle) * 0.4;
   }
 
   // fire for as long as the aim stick is held, toward the current facing

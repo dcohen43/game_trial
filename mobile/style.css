@@ -7,6 +7,15 @@
   -webkit-user-select: none;
 }
 
+:root {
+  /* Electric accent: a vivid, glowing neon crimson-pink for UI chrome
+     (controls, HUD, buttons) — distinct from the darker blood-red used for
+     gore, so the interface pops against the arena instead of blending in. */
+  --electric: #ff1259;
+  --electric-bright: #ff5c94;
+  --electric-glow: rgba(255, 18, 89, 0.85);
+}
+
 html, body {
   width: 100%;
   height: 100%;
@@ -34,15 +43,16 @@ canvas {
 #health-wrap {
   width: clamp(100px, 28vw, 150px);
   height: clamp(10px, 3vw, 14px);
-  border: 2px solid #400;
+  border: 2px solid var(--electric);
   background: #200;
   margin-bottom: 4px;
+  box-shadow: 0 0 8px rgba(255, 18, 89, 0.4);
 }
 
 #health-bar {
   height: 100%;
   width: 100%;
-  background: linear-gradient(90deg, #a00, #f33);
+  background: linear-gradient(90deg, #ff0040, var(--electric-bright));
   transition: width 0.15s ease-out;
 }
 
@@ -69,7 +79,7 @@ canvas {
    play area above it. The canvas is sized in JS to end where this begins,
    so controls never sit on top of gameplay. ===== */
 :root {
-  --control-bar-height: 190px;
+  --control-bar-height: 150px;
 }
 
 #control-bar {
@@ -82,7 +92,8 @@ canvas {
      of the user's chosen control size. */
   height: calc(min(var(--control-bar-height), 32vh) + env(safe-area-inset-bottom));
   background: linear-gradient(to top, #150a0a, #1c0e0e);
-  border-top: 2px solid rgba(255, 60, 60, 0.25);
+  border-top: 2px solid var(--electric-glow);
+  box-shadow: 0 0 16px rgba(255, 18, 89, 0.25);
   display: flex;
   z-index: 14;
 }
@@ -97,7 +108,7 @@ canvas {
 }
 
 #move-stick .stick-base {
-  --size: clamp(84px, 24vmin, 130px);
+  --size: clamp(68px, 19vmin, 104px);
   position: absolute;
   top: 50%;
   left: 50%;
@@ -105,12 +116,12 @@ canvas {
   height: var(--size);
   margin: calc(var(--size) / -2) 0 0 calc(var(--size) / -2);
   border-radius: 50%;
-  background: rgba(255, 255, 255, 0.08);
-  border: 2px solid rgba(255, 80, 80, 0.4);
+  background: rgba(255, 255, 255, 0.07);
+  border: 2px solid rgba(255, 18, 89, 0.45);
 }
 
 #move-stick .stick-knob {
-  --size: clamp(38px, 11vmin, 56px);
+  --size: clamp(30px, 9vmin, 44px);
   position: absolute;
   top: 50%;
   left: 50%;
@@ -118,13 +129,15 @@ canvas {
   height: var(--size);
   margin: calc(var(--size) / -2) 0 0 calc(var(--size) / -2);
   border-radius: 50%;
-  background: rgba(220, 40, 40, 0.55);
-  border: 2px solid rgba(255, 140, 140, 0.7);
-  transition: background 0.1s;
+  background: var(--electric);
+  border: 2px solid var(--electric-bright);
+  box-shadow: 0 0 10px var(--electric-glow);
+  transition: background 0.1s, box-shadow 0.1s;
 }
 
 #move-stick.active .stick-knob {
-  background: rgba(255, 60, 60, 0.8);
+  background: var(--electric-bright);
+  box-shadow: 0 0 18px var(--electric-glow), 0 0 32px rgba(255, 18, 89, 0.4);
 }
 
 /* ===== Aim & fire stick: a real, always-visible joystick like the move
@@ -144,7 +157,7 @@ canvas {
 }
 
 #look-zone .stick-base {
-  --size: clamp(84px, 24vmin, 130px);
+  --size: clamp(68px, 19vmin, 104px);
   position: absolute;
   top: 50%;
   left: 50%;
@@ -152,12 +165,12 @@ canvas {
   height: var(--size);
   margin: calc(var(--size) / -2) 0 0 calc(var(--size) / -2);
   border-radius: 50%;
-  background: rgba(255, 255, 255, 0.08);
-  border: 2px solid rgba(255, 80, 80, 0.4);
+  background: rgba(255, 255, 255, 0.07);
+  border: 2px solid rgba(255, 18, 89, 0.45);
 }
 
 #look-zone .stick-knob {
-  --size: clamp(38px, 11vmin, 56px);
+  --size: clamp(30px, 9vmin, 44px);
   position: absolute;
   top: 50%;
   left: 50%;
@@ -165,13 +178,15 @@ canvas {
   height: var(--size);
   margin: calc(var(--size) / -2) 0 0 calc(var(--size) / -2);
   border-radius: 50%;
-  background: rgba(220, 40, 40, 0.55);
-  border: 2px solid rgba(255, 140, 140, 0.7);
-  transition: background 0.1s;
+  background: var(--electric);
+  border: 2px solid var(--electric-bright);
+  box-shadow: 0 0 10px var(--electric-glow);
+  transition: background 0.1s, box-shadow 0.1s;
 }
 
 #look-zone.active .stick-knob {
-  background: rgba(255, 60, 60, 0.8);
+  background: var(--electric-bright);
+  box-shadow: 0 0 18px var(--electric-glow), 0 0 32px rgba(255, 18, 89, 0.4);
 }
 
 /* ===== Speed settings ===== */
@@ -186,7 +201,7 @@ canvas {
 
 #settings input[type="range"] {
   width: clamp(100px, 30vw, 160px);
-  accent-color: #c22;
+  accent-color: var(--electric);
 }
 
 #speed-value {
@@ -210,16 +225,16 @@ canvas {
 }
 
 #overlay h1 {
-  color: #d00;
+  color: var(--electric-bright);
   font-size: clamp(22px, 7vw, 38px);
-  text-shadow: 0 0 20px #800;
+  text-shadow: 0 0 20px var(--electric-glow), 0 0 40px rgba(255, 18, 89, 0.4);
   letter-spacing: 3px;
 }
 
 #gameover h1 {
-  color: #f00;
+  color: var(--electric-bright);
   font-size: clamp(26px, 8vw, 46px);
-  text-shadow: 0 0 30px #a00;
+  text-shadow: 0 0 24px var(--electric-glow), 0 0 48px rgba(255, 18, 89, 0.5);
 }
 
 #overlay p, #gameover p {
@@ -233,14 +248,16 @@ button {
   font-size: clamp(15px, 4.5vw, 20px);
   background: #600;
   color: #eee;
-  border: 2px solid #a00;
+  border: 2px solid var(--electric);
+  box-shadow: 0 0 12px rgba(255, 18, 89, 0.35);
   cursor: pointer;
   font-family: inherit;
   letter-spacing: 2px;
 }
 
 button:active {
-  background: #a00;
+  background: var(--electric);
+  box-shadow: 0 0 20px var(--electric-glow);
 }
 
 .hidden {
