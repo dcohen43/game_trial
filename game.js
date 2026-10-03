@@ -224,10 +224,10 @@ function update() {
 
   // movement
   let dx = 0, dy = 0;
-  if (keys['w'] || keys['arrowup']) dy -= 1;
-  if (keys['s'] || keys['arrowdown']) dy += 1;
-  if (keys['a'] || keys['arrowleft']) dx -= 1;
-  if (keys['d'] || keys['arrowright']) dx += 1;
+  if (keys['w']) dy -= 1;
+  if (keys['s']) dy += 1;
+  if (keys['a']) dx -= 1;
+  if (keys['d']) dx += 1;
   const len = Math.hypot(dx, dy);
   if (len > 0) {
     player.x += (dx / len) * player.speed;
