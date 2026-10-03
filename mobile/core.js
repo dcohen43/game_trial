@@ -87,23 +87,43 @@
   }
 
   // Whether a kill drops a pickup, and which type. Injectable rng for tests.
-  const PICKUP_TYPES = ['health', 'spread', 'rapid'];
+  // Weighted rather than uniform: 'life' is a rare bonus, not a regular drop.
+  const PICKUP_TYPES = ['health', 'spread', 'rapid', 'life'];
+  const PICKUP_WEIGHTS = [0.40, 0.25, 0.25, 0.10]; // must sum to 1, aligned by index to PICKUP_TYPES
   const PICKUP_DROP_CHANCE = 0.18;
 
   function rollPickupDrop(rng) {
     rng = rng || Math.random;
     if (rng() > PICKUP_DROP_CHANCE) return null;
     const typeRoll = rng();
-    const index = Math.min(PICKUP_TYPES.length - 1, Math.floor(typeRoll * PICKUP_TYPES.length));
-    return PICKUP_TYPES[index];
+    let cumulative = 0;
+    for (let i = 0; i < PICKUP_TYPES.length; i++) {
+      cumulative += PICKUP_WEIGHTS[i];
+      if (typeRoll < cumulative) return PICKUP_TYPES[i];
+    }
+    return PICKUP_TYPES[PICKUP_TYPES.length - 1];
+  }
+
+  const STARTING_LIVES = 3;
+  const MAX_LIVES = 5;
+  const HEALTH_PICKUP_AMOUNT = 30;
+
+  // Heals a plain player state object, capped at maxHealth. Pure — no
+  // audio/DOM. Used by both health pickups and passive regen, so the cap
+  // logic lives in exactly one place. Mutates and returns player.
+  function healPlayer(player, amount) {
+    player.health = Math.min(player.maxHealth, player.health + amount);
+    return player;
   }
 
   // Applies a pickup's effect to a plain player state object (health,
-  // maxHealth, weapon, weaponTimer). Pure — no audio/DOM. Mutates and
+  // maxHealth, weapon, weaponTimer, lives). Pure — no audio/DOM. Mutates and
   // returns player.
   function applyPickupEffect(player, pickupType) {
     if (pickupType === 'health') {
-      player.health = Math.min(player.maxHealth, player.health + 30);
+      healPlayer(player, HEALTH_PICKUP_AMOUNT);
+    } else if (pickupType === 'life') {
+      player.lives = Math.min(MAX_LIVES, (player.lives || 0) + 1);
     } else {
       player.weapon = pickupType;
       player.weaponTimer = 480;
@@ -118,6 +138,33 @@
     return entity.health <= 0;
   }
 
+  // Resolves a lethal hit against a player with a .lives field: consumes a
+  // life and respawns at full health if any remain, otherwise zeroes
+  // health/lives and signals game over. Pure — no audio/DOM/UI. Mutates and
+  // returns { gameOver }.
+  function resolveLethalHit(player) {
+    if (player.lives > 1) {
+      player.lives -= 1;
+      player.health = player.maxHealth;
+      return { gameOver: false };
+    }
+    player.lives = 0;
+    player.health = 0;
+    return { gameOver: true };
+  }
+
+  // ===== Score / combo (kill-streak momentum) =====
+  const BASE_KILL_SCORE = 10;
+  const COMBO_WINDOW_FRAMES = 150; // ~2.5s at 60fps to chain the next kill before the combo resets
+  const COMBO_MAX_STACK = 9; // caps the multiplier at 1 + 9*0.1 = 1.9x so it can't run away
+
+  // Score awarded for a kill at a given combo count (1 = first kill in a
+  // streak), scaling up to reward chaining kills quickly. Pure, deterministic.
+  function comboScore(comboCount) {
+    const stacks = Math.min(Math.max(comboCount, 1) - 1, COMBO_MAX_STACK);
+    return Math.round(BASE_KILL_SCORE * (1 + stacks * 0.1));
+  }
+
   return {
     ENEMY_KINDS,
     pickEnemyKind,
@@ -129,9 +176,19 @@
     circleIntersectsAnyObstacle,
     fireCooldown,
     rollPickupDrop,
+    healPlayer,
     applyPickupEffect,
     applyDamage,
+    resolveLethalHit,
+    comboScore,
     PICKUP_TYPES,
-    PICKUP_DROP_CHANCE
+    PICKUP_WEIGHTS,
+    PICKUP_DROP_CHANCE,
+    STARTING_LIVES,
+    MAX_LIVES,
+    HEALTH_PICKUP_AMOUNT,
+    BASE_KILL_SCORE,
+    COMBO_WINDOW_FRAMES,
+    COMBO_MAX_STACK
   };
 });

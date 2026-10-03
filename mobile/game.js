@@ -2,8 +2,11 @@
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
 const healthBar = document.getElementById('health-bar');
+const livesEl = document.getElementById('lives');
 const scoreEl = document.getElementById('score');
+const bestEl = document.getElementById('best');
 const waveEl = document.getElementById('wave');
+const comboEl = document.getElementById('combo');
 const weaponStatusEl = document.getElementById('weapon-status');
 const overlay = document.getElementById('overlay');
 const gameoverEl = document.getElementById('gameover');
@@ -358,9 +361,75 @@ controlSizeSlider.addEventListener('input', () => {
 const ENEMY_KINDS = GameCore.ENEMY_KINDS;
 
 // ===== Game state =====
-let player = { x: 0, y: 0, r: 16 * worldScale, speed: BASE_SPEED * speedMultiplier, health: 100, maxHealth: 100, hurtCooldown: 0, angle: -Math.PI / 2, weapon: 'normal', weaponTimer: 0 };
+const REGEN_GRACE_FRAMES = 180; // ~3s without taking a hit before passive regen kicks in
+const REGEN_RATE = 0.04; // HP/frame (~2.4 HP/s) once regen is active — a slow trickle, not a substitute for pickups
+let player = { x: 0, y: 0, r: 16 * worldScale, speed: BASE_SPEED * speedMultiplier, health: 100, maxHealth: 100, hurtCooldown: 0, angle: -Math.PI / 2, weapon: 'normal', weaponTimer: 0, lives: GameCore.STARTING_LIVES };
 let bullets = [], enemies = [], particles = [], splatters = [], obstacles = [], enemyProjectiles = [], pickups = [];
-let score = 0, wave = 1, enemiesToSpawn = 0, spawnTimer = 0, fireTimer = 0, running = false, shake = 0, levelBannerTimer = 0;
+let score = 0, wave = 1, enemiesToSpawn = 0, spawnTimer = 0, fireTimer = 0, running = false, shake = 0, levelBannerTimer = 0, regenGrace = 0;
+let comboCount = 0, comboTimer = 0;
+
+function updateLivesHud() {
+  livesEl.textContent = `Lives: ${player.lives}`;
+}
+
+// ===== High score (persisted) =====
+function loadHighScore() {
+  try {
+    const v = parseInt(localStorage.getItem('carnageArenaHighScore'), 10);
+    return isNaN(v) ? 0 : v;
+  } catch (e) {
+    return 0;
+  }
+}
+function saveHighScore(v) {
+  try { localStorage.setItem('carnageArenaHighScore', v); } catch (e) { /* ignore */ }
+}
+let highScore = loadHighScore();
+bestEl.textContent = `Best: ${highScore}`;
+
+// ===== Kill combo (momentum reward for chaining kills quickly) =====
+function updateComboHud() {
+  if (comboCount >= 2) {
+    comboEl.classList.remove('hidden');
+    comboEl.textContent = `Combo x${comboCount}`;
+  } else {
+    comboEl.classList.add('hidden');
+  }
+}
+
+function registerKill() {
+  comboCount = comboTimer > 0 ? comboCount + 1 : 1;
+  comboTimer = GameCore.COMBO_WINDOW_FRAMES;
+  score += GameCore.comboScore(comboCount);
+  scoreEl.textContent = `Score: ${score}`;
+  updateComboHud();
+}
+
+// Applies damage with the player's hit-cooldown/shake/regen-grace side
+// effects, then resolves lethal hits through the lives system instead of
+// always ending the game. Returns true if this hit was processed (false if
+// still within the post-hit cooldown window).
+function damagePlayer(amount, hurtCooldownFrames, shakeAmount) {
+  if (player.hurtCooldown > 0) return false;
+  player.hurtCooldown = hurtCooldownFrames;
+  regenGrace = REGEN_GRACE_FRAMES;
+  playPlayerHurt();
+  shake = shakeAmount;
+  const lethal = GameCore.applyDamage(player, amount);
+  if (lethal) {
+    const result = GameCore.resolveLethalHit(player);
+    updateLivesHud();
+    if (result.gameOver) {
+      healthBar.style.width = '0%';
+      endGame();
+    } else {
+      healthBar.style.width = '100%';
+    }
+  } else {
+    healthBar.style.width = Math.max(0, player.health) + '%';
+  }
+  return true;
+}
 
 function spawnObstacles() {
   obstacles = [];
@@ -391,7 +460,7 @@ function circleIntersectsAnyObstacle(cx, cy, cr) {
 }
 
 function reset() {
-  player = { x: canvas.width / 2, y: canvas.height / 2, r: 16 * worldScale, speed: BASE_SPEED * speedMultiplier, health: 100, maxHealth: 100, hurtCooldown: 0, angle: -Math.PI / 2, weapon: 'normal', weaponTimer: 0 };
+  player = { x: canvas.width / 2, y: canvas.height / 2, r: 16 * worldScale, speed: BASE_SPEED * speedMultiplier, health: 100, maxHealth: 100, hurtCooldown: 0, angle: -Math.PI / 2, weapon: 'normal', weaponTimer: 0, lives: GameCore.STARTING_LIVES };
   bullets = [];
   enemies = [];
   particles = [];
@@ -405,9 +474,14 @@ function reset() {
   fireTimer = 0;
   shake = 0;
   levelBannerTimer = 0;
+  regenGrace = 0;
+  comboCount = 0;
+  comboTimer = 0;
   running = true;
   spawnObstacles();
   healthBar.style.width = '100%';
+  updateLivesHud();
+  updateComboHud();
   scoreEl.textContent = 'Score: 0';
   waveEl.textContent = 'Level: 1';
   weaponStatusEl.classList.add('hidden');
@@ -493,6 +567,7 @@ function applyPickup(p) {
   playPickup();
   GameCore.applyPickupEffect(player, p.type);
   healthBar.style.width = player.health + '%';
+  if (p.type === 'life') updateLivesHud();
 }
 
 function fireCooldown() {
@@ -519,7 +594,16 @@ function shoot(angle) {
 
 function endGame() {
   running = false;
-  finalScoreEl.textContent = `Score: ${score} — Level ${wave}`;
+  let newBest = false;
+  if (score > highScore) {
+    highScore = score;
+    saveHighScore(highScore);
+    bestEl.textContent = `Best: ${highScore}`;
+    newBest = true;
+  }
+  finalScoreEl.textContent = newBest
+    ? `Score: ${score} — Level ${wave} — NEW BEST!`
+    : `Score: ${score} — Level ${wave} (Best: ${highScore})`;
   gameoverEl.classList.remove('hidden');
 }
 
@@ -589,9 +673,19 @@ function update() {
     enemiesToSpawn = GameCore.enemiesPerLevel(wave);
     waveEl.textContent = `Level: ${wave}`;
     levelBannerTimer = 100;
+    spawnObstacles();
+    resolveObstacleCollisions(player); // in case a new wall landed on the player
   }
 
   if (levelBannerTimer > 0) levelBannerTimer--;
+
+  if (comboTimer > 0) {
+    comboTimer--;
+    if (comboTimer === 0 && comboCount > 0) {
+      comboCount = 0;
+      updateComboHud();
+    }
+  }
 
   // bullets
   for (let i = bullets.length - 1; i >= 0; i--) {
@@ -618,8 +712,7 @@ function update() {
           spawnBlood(e.x, e.y, 35, 6);
           playDeath();
           shake = 10;
-          score += 10;
-          scoreEl.textContent = `Score: ${score}`;
+          registerKill();
           maybeDropPickup(e.x, e.y);
           enemies.splice(j, 1);
         } else {
@@ -645,14 +738,7 @@ function update() {
       continue;
     }
     if (GameCore.circlesOverlap(p.x, p.y, p.r, player.x, player.y, player.r)) {
-      if (player.hurtCooldown <= 0) {
-        player.health -= p.damage;
-        player.hurtCooldown = 20;
-        playPlayerHurt();
-        shake = 5;
-        healthBar.style.width = Math.max(0, player.health) + '%';
-        if (player.health <= 0) endGame();
-      }
+      damagePlayer(p.damage, 20, 5);
       enemyProjectiles.splice(i, 1);
     }
   }
@@ -693,17 +779,18 @@ function update() {
     resolveObstacleCollisions(e);
 
     if (distToPlayer < player.r + e.r) {
-      if (player.hurtCooldown <= 0) {
-        player.health -= e.contactDamage;
-        player.hurtCooldown = 30;
-        playPlayerHurt();
-        shake = 6;
-        healthBar.style.width = Math.max(0, player.health) + '%';
-        if (player.health <= 0) endGame();
-      }
+      damagePlayer(e.contactDamage, 30, 6);
     }
   }
   if (player.hurtCooldown > 0) player.hurtCooldown--;
+
+  // passive health regen after a few seconds without taking a hit
+  if (regenGrace > 0) {
+    regenGrace--;
+  } else if (player.health < player.maxHealth && running) {
+    GameCore.healPlayer(player, REGEN_RATE);
+    healthBar.style.width = player.health + '%';
+  }
 
   // pickups
   for (let i = pickups.length - 1; i >= 0; i--) {
@@ -811,7 +898,7 @@ function drawObstacle(rect) {
   }
 }
 
-const PICKUP_COLORS = { health: '#3f3', spread: '#ff0', rapid: '#3cf' };
+const PICKUP_COLORS = { health: '#3f3', spread: '#ff0', rapid: '#3cf', life: '#ffd700' };
 
 function drawPickup(p) {
   const bobY = Math.sin(p.bob) * 4;
@@ -828,6 +915,36 @@ function drawPickup(p) {
   ctx.closePath();
   ctx.fill();
   ctx.restore();
+}
+
+// Top-down tactical soldier: olive body, darker helmet offset toward the
+// facing direction, dark vest straps, and a long rifle (stock behind, barrel
+// well in front) in place of the old plain circle + stub. Call with the
+// context already translated to the player's position and rotated to its
+// facing angle.
+function drawPlayerSprite(r) {
+  ctx.fillStyle = '#6b7d45';
+  ctx.beginPath();
+  ctx.arc(0, 0, r, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = '#2c3621';
+  ctx.lineWidth = 2;
+  ctx.stroke();
+
+  ctx.fillStyle = '#4a5a30';
+  ctx.beginPath();
+  ctx.arc(r * 0.2, 0, r * 0.55, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.fillStyle = '#23291a';
+  ctx.fillRect(-r * 0.3, -r * 1.05, r * 0.5, r * 0.35);
+  ctx.fillRect(-r * 0.3, r * 0.7, r * 0.5, r * 0.35);
+
+  ctx.fillStyle = '#1a1712';
+  ctx.fillRect(-r * 0.9, -r * 0.22, r * 0.5, r * 0.44);
+  ctx.fillRect(r * 0.3, -r * 0.16, r * 1.8, r * 0.32);
+  ctx.fillStyle = '#0a0806';
+  ctx.fillRect(r * 2.0, -r * 0.1, r * 0.25, r * 0.2);
 }
 
 function draw() {
@@ -889,12 +1006,7 @@ function draw() {
   ctx.save();
   ctx.translate(player.x, player.y);
   ctx.rotate(player.angle);
-  ctx.fillStyle = '#3cf';
-  ctx.beginPath();
-  ctx.arc(0, 0, player.r, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.fillStyle = '#eee';
-  ctx.fillRect(player.r - 4, -4, 20, 8);
+  drawPlayerSprite(player.r);
   ctx.restore();
 
   if (levelBannerTimer > 0) {
@@ -908,6 +1020,18 @@ function draw() {
     ctx.shadowBlur = 16;
     ctx.fillText(`LEVEL ${wave}`, canvas.width / 2, canvas.height / 2 - 80);
     ctx.restore();
+  }
+
+  // low-health tension cue: a pulsing red vignette, not a substitute for the
+  // health bar — just urgency/adrenaline feedback when things are dire.
+  if (running && player.health / player.maxHealth < 0.25) {
+    const pulse = 0.18 + 0.14 * Math.sin(performance.now() / 180);
+    const cx = canvas.width / 2, cy = canvas.height / 2;
+    const grad = ctx.createRadialGradient(cx, cy, Math.min(canvas.width, canvas.height) * 0.25, cx, cy, Math.max(canvas.width, canvas.height) * 0.75);
+    grad.addColorStop(0, 'rgba(255, 0, 0, 0)');
+    grad.addColorStop(1, `rgba(255, 0, 0, ${pulse})`);
+    ctx.fillStyle = grad;
+    ctx.fillRect(-20, -20, canvas.width + 40, canvas.height + 40);
   }
 
   ctx.restore();

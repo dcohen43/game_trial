@@ -183,6 +183,24 @@ describe('rollPickupDrop', () => {
     assert.equal(first, GameCore.PICKUP_TYPES[0]);
     assert.equal(last, GameCore.PICKUP_TYPES[GameCore.PICKUP_TYPES.length - 1]);
   });
+
+  test('weights are aligned to PICKUP_TYPES and sum to 1', () => {
+    assert.equal(GameCore.PICKUP_WEIGHTS.length, GameCore.PICKUP_TYPES.length);
+    const sum = GameCore.PICKUP_WEIGHTS.reduce((a, b) => a + b, 0);
+    assert.ok(Math.abs(sum - 1) < 1e-9);
+  });
+
+  test('life is the rarest pickup type (smallest weight)', () => {
+    const lifeIndex = GameCore.PICKUP_TYPES.indexOf('life');
+    const lifeWeight = GameCore.PICKUP_WEIGHTS[lifeIndex];
+    assert.ok(lifeWeight < Math.max(...GameCore.PICKUP_WEIGHTS.filter((_, i) => i !== lifeIndex)));
+  });
+
+  test('type roll lands on "life" at the top of the weighted range', () => {
+    // cumulative weights: health .40, spread .65, rapid .90, life 1.00
+    const type = GameCore.rollPickupDrop(fakeRng(0.0, 0.95));
+    assert.equal(type, 'life');
+  });
 });
 
 describe('applyPickupEffect', () => {
@@ -203,6 +221,81 @@ describe('applyPickupEffect', () => {
     GameCore.applyPickupEffect(player, 'spread');
     assert.equal(player.weapon, 'spread');
     assert.equal(player.weaponTimer, 480);
+  });
+
+  test('life pickup grants an extra life', () => {
+    const player = { health: 100, maxHealth: 100, weapon: 'normal', weaponTimer: 0, lives: 2 };
+    GameCore.applyPickupEffect(player, 'life');
+    assert.equal(player.lives, 3);
+  });
+
+  test('life pickup caps at MAX_LIVES', () => {
+    const player = { health: 100, maxHealth: 100, weapon: 'normal', weaponTimer: 0, lives: GameCore.MAX_LIVES };
+    GameCore.applyPickupEffect(player, 'life');
+    assert.equal(player.lives, GameCore.MAX_LIVES);
+  });
+});
+
+describe('healPlayer', () => {
+  test('heals but caps at maxHealth', () => {
+    const player = { health: 90, maxHealth: 100 };
+    GameCore.healPlayer(player, 30);
+    assert.equal(player.health, 100);
+  });
+
+  test('does not overheal from a low starting point', () => {
+    const player = { health: 50, maxHealth: 100 };
+    GameCore.healPlayer(player, 10);
+    assert.equal(player.health, 60);
+  });
+});
+
+describe('comboScore', () => {
+  test('first kill in a streak awards the base score', () => {
+    assert.equal(GameCore.comboScore(1), GameCore.BASE_KILL_SCORE);
+  });
+
+  test('score increases with combo count', () => {
+    const first = GameCore.comboScore(1);
+    const second = GameCore.comboScore(2);
+    const third = GameCore.comboScore(3);
+    assert.ok(second > first);
+    assert.ok(third > second);
+  });
+
+  test('caps the multiplier at COMBO_MAX_STACK regardless of how high the count goes', () => {
+    const atCap = GameCore.comboScore(GameCore.COMBO_MAX_STACK + 1);
+    const wayBeyond = GameCore.comboScore(1000);
+    assert.equal(atCap, wayBeyond);
+  });
+
+  test('treats a combo count of 0 the same as 1 (never scores below base)', () => {
+    assert.equal(GameCore.comboScore(0), GameCore.BASE_KILL_SCORE);
+  });
+});
+
+describe('resolveLethalHit', () => {
+  test('consumes a life and respawns at full health when lives remain', () => {
+    const player = { health: 0, maxHealth: 100, lives: 3 };
+    const result = GameCore.resolveLethalHit(player);
+    assert.equal(result.gameOver, false);
+    assert.equal(player.lives, 2);
+    assert.equal(player.health, 100);
+  });
+
+  test('ends the game on the last life', () => {
+    const player = { health: 0, maxHealth: 100, lives: 1 };
+    const result = GameCore.resolveLethalHit(player);
+    assert.equal(result.gameOver, true);
+    assert.equal(player.lives, 0);
+    assert.equal(player.health, 0);
+  });
+
+  test('treats 0 lives as already game over, not negative lives', () => {
+    const player = { health: 0, maxHealth: 100, lives: 0 };
+    const result = GameCore.resolveLethalHit(player);
+    assert.equal(result.gameOver, true);
+    assert.equal(player.lives, 0);
   });
 });
 
