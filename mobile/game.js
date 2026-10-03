@@ -160,38 +160,37 @@ function playPlayerHurt() {
 }
 
 // ===== Virtual joysticks (touch) =====
-function makeStick(elId) {
+// ===== Move stick: fixed position, always visible =====
+function makeMoveStick(elId) {
   const el = document.getElementById(elId);
   const knob = el.querySelector('.stick-knob');
-  const state = { el, knob, touchId: null, dx: 0, dy: 0, active: false, cx: 0, cy: 0, maxR: 40 };
+  const state = { touchId: null, dx: 0, dy: 0, maxR: 55 };
+  let originX = 0, originY = 0;
 
   function start(touch) {
     const rect = el.getBoundingClientRect();
-    state.cx = rect.left + rect.width / 2;
-    state.cy = rect.top + rect.height / 2;
+    originX = rect.left + rect.width / 2;
+    originY = rect.top + rect.height / 2;
     state.touchId = touch.identifier;
-    state.active = true;
     el.classList.add('active');
     move(touch);
   }
 
   function move(touch) {
-    let dx = touch.clientX - state.cx;
-    let dy = touch.clientY - state.cy;
+    let dx = touch.clientX - originX;
+    let dy = touch.clientY - originY;
     const dist = Math.hypot(dx, dy);
     if (dist > state.maxR) {
       dx = (dx / dist) * state.maxR;
       dy = (dy / dist) * state.maxR;
     }
     knob.style.transform = `translate(${dx}px, ${dy}px)`;
-    const norm = state.maxR;
-    state.dx = dx / norm;
-    state.dy = dy / norm;
+    state.dx = dx / state.maxR;
+    state.dy = dy / state.maxR;
   }
 
   function end() {
     state.touchId = null;
-    state.active = false;
     state.dx = 0;
     state.dy = 0;
     knob.style.transform = 'translate(0px, 0px)';
@@ -226,8 +225,93 @@ function makeStick(elId) {
   return state;
 }
 
-const moveStick = makeStick('move-stick');
-const aimStick = makeStick('aim-stick');
+const moveStick = makeMoveStick('move-stick');
+
+// ===== Aim & fire: touching down fires continuously; dragging rotates via
+// relative delta (like a camera drag), so it only ever applies deltas and
+// can never "snap" the aim back to anything. One control does both. =====
+const lookZone = document.getElementById('look-zone');
+const lookIndicator = document.getElementById('look-indicator');
+const LOOK_SENSITIVITY = 0.012;
+let lookTouchId = null;
+let lookLastX = 0, lookLastY = 0;
+let fireHeld = false;
+
+function positionIndicator(x, y) {
+  lookIndicator.style.transform = `translate(${x}px, ${y}px)`;
+}
+
+lookZone.addEventListener('touchstart', e => {
+  e.preventDefault();
+  if (lookTouchId === null) {
+    const t = e.changedTouches[0];
+    lookTouchId = t.identifier;
+    lookLastX = t.clientX;
+    lookLastY = t.clientY;
+    fireHeld = true;
+    lookIndicator.classList.add('active');
+    positionIndicator(t.clientX, t.clientY);
+  }
+}, { passive: false });
+
+window.addEventListener('touchmove', e => {
+  for (const t of e.changedTouches) {
+    if (t.identifier === lookTouchId) {
+      e.preventDefault();
+      const deltaX = t.clientX - lookLastX;
+      lookLastX = t.clientX;
+      lookLastY = t.clientY;
+      if (running) player.angle += deltaX * LOOK_SENSITIVITY;
+      positionIndicator(t.clientX, t.clientY);
+    }
+  }
+}, { passive: false });
+
+window.addEventListener('touchend', e => {
+  for (const t of e.changedTouches) {
+    if (t.identifier === lookTouchId) {
+      lookTouchId = null;
+      fireHeld = false;
+      lookIndicator.classList.remove('active');
+    }
+  }
+});
+window.addEventListener('touchcancel', e => {
+  for (const t of e.changedTouches) {
+    if (t.identifier === lookTouchId) {
+      lookTouchId = null;
+      fireHeld = false;
+      lookIndicator.classList.remove('active');
+    }
+  }
+});
+
+// ===== Speed setting (adjustable, persisted) =====
+const BASE_SPEED = 4;
+const speedSlider = document.getElementById('speed-slider');
+const speedValueEl = document.getElementById('speed-value');
+
+function loadSpeedMul() {
+  try {
+    const v = parseFloat(localStorage.getItem('carnageArenaSpeedMul'));
+    return isNaN(v) ? 0.7 : v;
+  } catch (e) {
+    return 0.7;
+  }
+}
+function saveSpeedMul(v) {
+  try { localStorage.setItem('carnageArenaSpeedMul', v); } catch (e) { /* ignore */ }
+}
+
+let speedMultiplier = loadSpeedMul();
+speedSlider.value = speedMultiplier;
+speedValueEl.textContent = speedMultiplier.toFixed(2) + 'x';
+speedSlider.addEventListener('input', () => {
+  speedMultiplier = parseFloat(speedSlider.value);
+  speedValueEl.textContent = speedMultiplier.toFixed(2) + 'x';
+  saveSpeedMul(speedMultiplier);
+  player.speed = BASE_SPEED * speedMultiplier;
+});
 
 // ===== Enemy kind definitions =====
 const ENEMY_KINDS = {
@@ -244,7 +328,7 @@ function pickEnemyKind() {
 }
 
 // ===== Game state =====
-let player = { x: 0, y: 0, r: 16, speed: 4, health: 100, maxHealth: 100, hurtCooldown: 0, angle: -Math.PI / 2, weapon: 'normal', weaponTimer: 0 };
+let player = { x: 0, y: 0, r: 16, speed: BASE_SPEED * speedMultiplier, health: 100, maxHealth: 100, hurtCooldown: 0, angle: -Math.PI / 2, weapon: 'normal', weaponTimer: 0 };
 let bullets = [], enemies = [], particles = [], splatters = [], obstacles = [], enemyProjectiles = [], pickups = [];
 let score = 0, wave = 1, enemiesToSpawn = 0, spawnTimer = 0, fireTimer = 0, running = false, shake = 0;
 
@@ -301,7 +385,7 @@ function circleIntersectsAnyObstacle(cx, cy, cr) {
 }
 
 function reset() {
-  player = { x: canvas.width / 2, y: canvas.height / 2, r: 16, speed: 4, health: 100, maxHealth: 100, hurtCooldown: 0, angle: -Math.PI / 2, weapon: 'normal', weaponTimer: 0 };
+  player = { x: canvas.width / 2, y: canvas.height / 2, r: 16, speed: BASE_SPEED * speedMultiplier, health: 100, maxHealth: 100, hurtCooldown: 0, angle: -Math.PI / 2, weapon: 'normal', weaponTimer: 0 };
   bullets = [];
   enemies = [];
   particles = [];
@@ -444,12 +528,14 @@ function endGame() {
 function update() {
   if (!running) return;
 
-  // movement from left stick
+  // movement from left stick (quadratic ease-in: small nudges move slowly, full push is full speed)
   const mdx = moveStick.dx, mdy = moveStick.dy;
   const len = Math.hypot(mdx, mdy);
-  if (len > 0.15) {
-    player.x += (mdx / Math.max(len, 1)) * player.speed * Math.min(len, 1);
-    player.y += (mdy / Math.max(len, 1)) * player.speed * Math.min(len, 1);
+  if (len > 0.12) {
+    const mag = Math.min(len, 1);
+    const curved = mag * mag;
+    player.x += (mdx / len) * player.speed * curved;
+    player.y += (mdy / len) * player.speed * curved;
   }
   player.x = Math.max(player.r, Math.min(canvas.width - player.r, player.x));
   player.y = Math.max(player.r, Math.min(canvas.height - player.r, player.y));
@@ -466,16 +552,13 @@ function update() {
     }
   }
 
-  // aim + fire from right stick
-  const adx = aimStick.dx, ady = aimStick.dy;
-  const alen = Math.hypot(adx, ady);
+  // (aiming is handled by the look-zone drag handler directly, see above)
+
+  // fire from the dedicated FIRE button, toward the last aimed direction
   fireTimer--;
-  if (alen > 0.25) {
-    player.angle = Math.atan2(ady, adx);
-    if (fireTimer <= 0) {
-      shoot(player.angle);
-      fireTimer = fireCooldown();
-    }
+  if (fireHeld && fireTimer <= 0) {
+    shoot(player.angle);
+    fireTimer = fireCooldown();
   }
 
   // spawn waves
@@ -736,6 +819,19 @@ function draw() {
     ctx.arc(b.x, b.y, b.r, 0, Math.PI * 2);
     ctx.fill();
   }
+
+  // persistent aim-direction line, visible even when not touching the aim stick
+  ctx.save();
+  ctx.translate(player.x, player.y);
+  ctx.rotate(player.angle);
+  ctx.strokeStyle = 'rgba(255, 220, 0, 0.35)';
+  ctx.lineWidth = 2;
+  ctx.setLineDash([4, 6]);
+  ctx.beginPath();
+  ctx.moveTo(player.r + 6, 0);
+  ctx.lineTo(player.r + 70, 0);
+  ctx.stroke();
+  ctx.restore();
 
   ctx.save();
   ctx.translate(player.x, player.y);
