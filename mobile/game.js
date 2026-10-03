@@ -931,30 +931,30 @@ function drawEnemy(e) {
 // after each transition (on top of the layout itself regenerating), while
 // keeping each variant's shape/texture identity (corner braces, slats) intact.
 const OBSTACLE_THEMES = [
-  { // rust red (original)
-    plain: { fill: '#2a1818', stroke: '#4a2828' },
-    rust: { fill: '#331c14', stroke: '#6b3a24', accent: 'rgba(180, 100, 60, 0.5)' },
-    crate: { fill: '#231414', stroke: '#4a2828', accent: 'rgba(100, 50, 40, 0.4)' }
+  { // rust/amber
+    plain: { fill: '#5a2a22', stroke: '#ff8552' },
+    rust: { fill: '#6e3420', stroke: '#ff9d5c', accent: 'rgba(255, 180, 120, 0.8)' },
+    crate: { fill: '#4a241c', stroke: '#ff8552', accent: 'rgba(255, 150, 100, 0.6)' }
   },
   { // teal steel
-    plain: { fill: '#182a2a', stroke: '#284a4a' },
-    rust: { fill: '#14332e', stroke: '#246b5a', accent: 'rgba(60, 180, 160, 0.5)' },
-    crate: { fill: '#142323', stroke: '#284a4a', accent: 'rgba(40, 100, 90, 0.4)' }
+    plain: { fill: '#1a4a4a', stroke: '#4de0e0' },
+    rust: { fill: '#155c52', stroke: '#3dd9b8', accent: 'rgba(100, 255, 230, 0.8)' },
+    crate: { fill: '#153a3a', stroke: '#4de0e0', accent: 'rgba(80, 220, 210, 0.6)' }
   },
   { // violet
-    plain: { fill: '#241829', stroke: '#402a46' },
-    rust: { fill: '#2e1433', stroke: '#5a246b', accent: 'rgba(160, 60, 180, 0.5)' },
-    crate: { fill: '#201423', stroke: '#402846', accent: 'rgba(90, 40, 100, 0.4)' }
+    plain: { fill: '#4a2258', stroke: '#c060ff' },
+    rust: { fill: '#5c2a6e', stroke: '#d070ff', accent: 'rgba(220, 140, 255, 0.8)' },
+    crate: { fill: '#3a1a46', stroke: '#c060ff', accent: 'rgba(200, 120, 255, 0.6)' }
   },
   { // olive brass
-    plain: { fill: '#262918', stroke: '#464a28' },
-    rust: { fill: '#332e14', stroke: '#6b5a24', accent: 'rgba(180, 160, 60, 0.5)' },
-    crate: { fill: '#232014', stroke: '#4a4628', accent: 'rgba(100, 90, 40, 0.4)' }
+    plain: { fill: '#585a1a', stroke: '#e8d23a' },
+    rust: { fill: '#6e6e20', stroke: '#ffe066', accent: 'rgba(255, 230, 120, 0.8)' },
+    crate: { fill: '#464614', stroke: '#e8d23a', accent: 'rgba(230, 210, 100, 0.6)' }
   },
   { // indigo
-    plain: { fill: '#181c29', stroke: '#283246' },
-    rust: { fill: '#141c33', stroke: '#24386b', accent: 'rgba(60, 100, 180, 0.5)' },
-    crate: { fill: '#141823', stroke: '#28324a', accent: 'rgba(40, 60, 100, 0.4)' }
+    plain: { fill: '#22285c', stroke: '#6080ff' },
+    rust: { fill: '#2a3270', stroke: '#7090ff', accent: 'rgba(140, 160, 255, 0.8)' },
+    crate: { fill: '#1a2046', stroke: '#6080ff', accent: 'rgba(120, 140, 255, 0.6)' }
   }
 ];
 function currentObstacleTheme() {

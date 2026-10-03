@@ -289,11 +289,11 @@ function damagePlayer(amount, hurtCooldownFrames, shakeAmount) {
 // Obstacle color themes cycle by level so the arena visibly looks different
 // after each transition, on top of the layout itself regenerating.
 const OBSTACLE_THEMES = [
-  { fill: '#331c1c', stroke: '#6b3a3a' }, // rust red (original)
-  { fill: '#1c2a33', stroke: '#3a6b6b' }, // teal steel
-  { fill: '#2a1c33', stroke: '#6b3a6b' }, // violet
-  { fill: '#2a2a1c', stroke: '#6b6b3a' }, // olive brass
-  { fill: '#1c1c33', stroke: '#3a3a6b' }  // indigo
+  { fill: '#5a2a22', stroke: '#ff8552' }, // rust/amber
+  { fill: '#1a4a4a', stroke: '#4de0e0' }, // teal steel
+  { fill: '#4a2258', stroke: '#c060ff' }, // violet
+  { fill: '#585a1a', stroke: '#e8d23a' }, // olive brass
+  { fill: '#22285c', stroke: '#6080ff' }  // indigo
 ];
 function currentObstacleTheme() {
   return OBSTACLE_THEMES[(wave - 1) % OBSTACLE_THEMES.length];
