@@ -1,4 +1,4 @@
-const CACHE_NAME = 'carnage-arena-v1';
+const CACHE_NAME = 'carnage-arena-v2';
 const ASSETS = [
   './',
   './index.html',

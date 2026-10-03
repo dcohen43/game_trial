@@ -234,18 +234,49 @@ function makeMoveStick(elId) {
 
 const moveStick = makeMoveStick('move-stick');
 
-// ===== Aim & fire: touching down fires continuously; dragging rotates via
-// relative delta (like a camera drag), so it only ever applies deltas and
-// can never "snap" the aim back to anything. One control does both. =====
+// ===== Aim & fire: touching down fires continuously; dragging rotates.
+//
+// Rotation is "rotary drag": the pivot is wherever you first touch down,
+// and the angle is tracked as your finger moves AROUND that pivot, not as
+// linear left/right distance. A full 360 degree turn only needs a small
+// circle traced around the pivot, not a swipe wider than the screen — so
+// you never have to lift your finger and re-grip to keep spinning one way.
+// It's still purely incremental (each frame adds the angle swept since the
+// last one), so it can never "snap" the aim back to anything, same as the
+// old linear-drag version. =====
 const lookZone = document.getElementById('look-zone');
 const lookIndicator = document.getElementById('look-indicator');
-const LOOK_SENSITIVITY = 0.012;
+const ROTARY_DEADZONE = 10; // px from the pivot before angle tracking engages
 let lookTouchId = null;
-let lookLastX = 0, lookLastY = 0;
+let pivotX = 0, pivotY = 0;
+let lastTouchAngle = null;
 let fireHeld = false;
 
 function positionIndicator(x, y) {
   lookIndicator.style.transform = `translate(${x}px, ${y}px)`;
+}
+
+// Shortest signed angular distance from `from` to `to`, wrapped to [-pi, pi],
+// so sweeping past the -pi/pi seam doesn't register as a sudden ~360 jump.
+function angleDelta(to, from) {
+  let d = to - from;
+  while (d > Math.PI) d -= Math.PI * 2;
+  while (d < -Math.PI) d += Math.PI * 2;
+  return d;
+}
+
+function updateLookAngle(touch) {
+  const dx = touch.clientX - pivotX;
+  const dy = touch.clientY - pivotY;
+  const dist = Math.hypot(dx, dy);
+  if (dist > ROTARY_DEADZONE) {
+    const currentAngle = Math.atan2(dy, dx);
+    if (lastTouchAngle !== null && running) {
+      player.angle += angleDelta(currentAngle, lastTouchAngle);
+    }
+    lastTouchAngle = currentAngle;
+  }
+  positionIndicator(touch.clientX, touch.clientY);
 }
 
 lookZone.addEventListener('touchstart', e => {
@@ -253,8 +284,9 @@ lookZone.addEventListener('touchstart', e => {
   if (lookTouchId === null) {
     const t = e.changedTouches[0];
     lookTouchId = t.identifier;
-    lookLastX = t.clientX;
-    lookLastY = t.clientY;
+    pivotX = t.clientX;
+    pivotY = t.clientY;
+    lastTouchAngle = null;
     fireHeld = true;
     lookIndicator.classList.add('active');
     positionIndicator(t.clientX, t.clientY);
@@ -265,11 +297,7 @@ window.addEventListener('touchmove', e => {
   for (const t of e.changedTouches) {
     if (t.identifier === lookTouchId) {
       e.preventDefault();
-      const deltaX = t.clientX - lookLastX;
-      lookLastX = t.clientX;
-      lookLastY = t.clientY;
-      if (running) player.angle += deltaX * LOOK_SENSITIVITY;
-      positionIndicator(t.clientX, t.clientY);
+      updateLookAngle(t);
     }
   }
 }, { passive: false });

@@ -32,8 +32,8 @@ canvas {
 }
 
 #health-wrap {
-  width: 150px;
-  height: 14px;
+  width: clamp(100px, 28vw, 150px);
+  height: clamp(10px, 3vw, 14px);
   border: 2px solid #400;
   background: #200;
   margin-bottom: 4px;
@@ -47,22 +47,22 @@ canvas {
 }
 
 #score, #wave {
-  font-size: 13px;
+  font-size: clamp(10px, 3vw, 13px);
   text-shadow: 1px 1px 2px #000;
   margin-top: 1px;
 }
 
 #weapon-status {
-  font-size: 12px;
+  font-size: clamp(9px, 2.6vw, 12px);
   color: #ffd400;
   text-shadow: 1px 1px 2px #000;
   margin-top: 3px;
 }
 
 #overlay .hint {
-  font-size: 12px;
+  font-size: clamp(9px, 2.6vw, 12px);
   color: #966;
-  max-width: 300px;
+  max-width: min(300px, 80vw);
 }
 
 /* ===== Control bar: a dedicated strip at the bottom, separate from the
@@ -97,24 +97,26 @@ canvas {
 }
 
 #move-stick .stick-base {
+  --size: clamp(84px, 24vmin, 130px);
   position: absolute;
   top: 50%;
   left: 50%;
-  width: 130px;
-  height: 130px;
-  margin: -65px 0 0 -65px;
+  width: var(--size);
+  height: var(--size);
+  margin: calc(var(--size) / -2) 0 0 calc(var(--size) / -2);
   border-radius: 50%;
   background: rgba(255, 255, 255, 0.08);
   border: 2px solid rgba(255, 80, 80, 0.4);
 }
 
 #move-stick .stick-knob {
+  --size: clamp(38px, 11vmin, 56px);
   position: absolute;
   top: 50%;
   left: 50%;
-  width: 56px;
-  height: 56px;
-  margin: -28px 0 0 -28px;
+  width: var(--size);
+  height: var(--size);
+  margin: calc(var(--size) / -2) 0 0 calc(var(--size) / -2);
   border-radius: 50%;
   background: rgba(220, 40, 40, 0.55);
   border: 2px solid rgba(255, 140, 140, 0.7);
@@ -137,13 +139,14 @@ canvas {
 }
 
 #look-zone::before {
+  --size: clamp(84px, 24vmin, 130px);
   content: '';
   position: absolute;
   top: 50%;
   left: 50%;
-  width: 130px;
-  height: 130px;
-  margin: -65px 0 0 -65px;
+  width: var(--size);
+  height: var(--size);
+  margin: calc(var(--size) / -2) 0 0 calc(var(--size) / -2);
   border-radius: 50%;
   background: rgba(255, 255, 255, 0.05);
   border: 2px dashed rgba(255, 80, 80, 0.3);
@@ -151,12 +154,13 @@ canvas {
 }
 
 #look-indicator {
+  --size: clamp(44px, 13vmin, 64px);
   position: fixed;
   top: 0;
   left: 0;
-  width: 64px;
-  height: 64px;
-  margin: -32px 0 0 -32px;
+  width: var(--size);
+  height: var(--size);
+  margin: calc(var(--size) / -2) 0 0 calc(var(--size) / -2);
   border-radius: 50%;
   background: rgba(255, 40, 40, 0.3);
   border: 3px solid rgba(255, 120, 120, 0.8);
@@ -174,14 +178,14 @@ canvas {
 #settings {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: clamp(6px, 2vw, 10px);
   margin: 10px 0;
   color: #ccc;
-  font-size: 13px;
+  font-size: clamp(10px, 3vw, 13px);
 }
 
 #settings input[type="range"] {
-  width: 160px;
+  width: clamp(100px, 30vw, 160px);
   accent-color: #c22;
 }
 
@@ -207,26 +211,26 @@ canvas {
 
 #overlay h1 {
   color: #d00;
-  font-size: 38px;
+  font-size: clamp(22px, 7vw, 38px);
   text-shadow: 0 0 20px #800;
   letter-spacing: 3px;
 }
 
 #gameover h1 {
   color: #f00;
-  font-size: 46px;
+  font-size: clamp(26px, 8vw, 46px);
   text-shadow: 0 0 30px #a00;
 }
 
 #overlay p, #gameover p {
   margin: 14px 0;
-  font-size: 15px;
+  font-size: clamp(11px, 3.2vw, 15px);
   color: #ccc;
 }
 
 button {
-  padding: 16px 40px;
-  font-size: 20px;
+  padding: clamp(10px, 3vw, 16px) clamp(24px, 8vw, 40px);
+  font-size: clamp(15px, 4.5vw, 20px);
   background: #600;
   color: #eee;
   border: 2px solid #a00;
