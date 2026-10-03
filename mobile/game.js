@@ -877,12 +877,12 @@ function drawGlowDot(x, y, radius, rgb) {
 // its base hue. Spitters get toxic green eyes instead, to read as the
 // ranged/poison-flavored threat.
 function drawEnemy(e) {
-  const eyeRgb = e.kind === 'spitter' ? '140, 255, 70' : '255, 40, 40';
+  const eyeRgb = e.kind === 'spitter' ? '170, 255, 20' : '255, 15, 70';
 
   if (e.kind === 'brute') {
     ctx.save();
     ctx.translate(e.x, e.y);
-    ctx.strokeStyle = 'rgba(255, 30, 30, 0.55)';
+    ctx.strokeStyle = 'rgba(255, 20, 90, 0.8)';
     ctx.lineWidth = 3;
     ctx.beginPath();
     for (let i = 0; i < 6; i++) {
@@ -892,7 +892,7 @@ function drawEnemy(e) {
     }
     ctx.closePath();
     ctx.stroke();
-    ctx.fillStyle = `hsl(${e.hue}, 90%, 38%)`;
+    ctx.fillStyle = `hsl(${e.hue}, 100%, 48%)`;
     ctx.beginPath();
     for (let i = 0; i < 6; i++) {
       const a = (Math.PI * 2 / 6) * i;
@@ -909,7 +909,7 @@ function drawEnemy(e) {
     ctx.translate(e.x, e.y);
     const angle = Math.atan2(player.y - e.y, player.x - e.x);
     ctx.rotate(angle);
-    ctx.strokeStyle = 'rgba(255, 30, 30, 0.5)';
+    ctx.strokeStyle = 'rgba(255, 20, 90, 0.75)';
     ctx.lineWidth = 2;
     ctx.beginPath();
     ctx.moveTo(e.r + 2, 0);
@@ -917,7 +917,7 @@ function drawEnemy(e) {
     ctx.lineTo(-(e.r + 2) * 0.7, -(e.r + 2) * 0.8);
     ctx.closePath();
     ctx.stroke();
-    ctx.fillStyle = `hsl(${e.hue}, 90%, 44%)`;
+    ctx.fillStyle = `hsl(${e.hue}, 100%, 54%)`;
     ctx.beginPath();
     ctx.moveTo(e.r, 0);
     ctx.lineTo(-e.r * 0.7, e.r * 0.8);
@@ -929,12 +929,12 @@ function drawEnemy(e) {
   } else {
     ctx.save();
     ctx.translate(e.x, e.y);
-    ctx.strokeStyle = 'rgba(255, 30, 30, 0.5)';
+    ctx.strokeStyle = 'rgba(255, 20, 90, 0.75)';
     ctx.lineWidth = 2;
     ctx.beginPath();
     ctx.arc(0, 0, e.r + 2, 0, Math.PI * 2);
     ctx.stroke();
-    ctx.fillStyle = `hsl(${e.hue}, 85%, 38%)`;
+    ctx.fillStyle = `hsl(${e.hue}, 100%, 46%)`;
     ctx.beginPath();
     ctx.arc(0, 0, e.r, 0, Math.PI * 2);
     ctx.fill();
