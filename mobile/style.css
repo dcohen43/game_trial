@@ -77,7 +77,10 @@ canvas {
   bottom: 0;
   left: 0;
   width: 100%;
-  height: calc(var(--control-bar-height) + env(safe-area-inset-bottom));
+  /* Caps at 32% of viewport height so short landscape screens (iPhone in
+     particular) never lose most of the play area to controls, regardless
+     of the user's chosen control size. */
+  height: calc(min(var(--control-bar-height), 32vh) + env(safe-area-inset-bottom));
   background: linear-gradient(to top, #150a0a, #1c0e0e);
   border-top: 2px solid rgba(255, 60, 60, 0.25);
   display: flex;

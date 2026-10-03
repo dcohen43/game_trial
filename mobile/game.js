@@ -348,28 +348,13 @@ controlSizeSlider.addEventListener('input', () => {
   resize();
 });
 
-// ===== Enemy kind definitions =====
-const ENEMY_KINDS = {
-  grunt: { baseR: 17, speedMul: 1, hpMul: 1, contactDamage: 10, hue: 105, label: 'grunt' },
-  brute: { baseR: 29, speedMul: 0.55, hpMul: 2.6, contactDamage: 18, hue: 15, label: 'brute' },
-  spitter: { baseR: 14, speedMul: 0.9, hpMul: 0.8, contactDamage: 6, hue: 280, label: 'spitter' }
-};
-
-function pickEnemyKind() {
-  const roll = Math.random();
-  if (wave >= 3 && roll < 0.2) return 'spitter';
-  if (wave >= 2 && roll < 0.45) return 'brute';
-  return 'grunt';
-}
+// ===== Enemy kind definitions (shared logic lives in core.js) =====
+const ENEMY_KINDS = GameCore.ENEMY_KINDS;
 
 // ===== Game state =====
 let player = { x: 0, y: 0, r: 16, speed: BASE_SPEED * speedMultiplier, health: 100, maxHealth: 100, hurtCooldown: 0, angle: -Math.PI / 2, weapon: 'normal', weaponTimer: 0 };
 let bullets = [], enemies = [], particles = [], splatters = [], obstacles = [], enemyProjectiles = [], pickups = [];
 let score = 0, wave = 1, enemiesToSpawn = 0, spawnTimer = 0, fireTimer = 0, running = false, shake = 0, levelBannerTimer = 0;
-
-function rectsOverlap(a, b) {
-  return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
-}
 
 function spawnObstacles() {
   obstacles = [];
@@ -385,38 +370,18 @@ function spawnObstacles() {
     const rect = { x, y, w, h };
     const rectCx = x + w / 2, rectCy = y + h / 2;
     if (Math.hypot(rectCx - cx, rectCy - cy) < 150) continue;
-    if (obstacles.some(o => rectsOverlap(
+    if (obstacles.some(o => GameCore.rectsOverlap(
       { x: rect.x - 20, y: rect.y - 20, w: rect.w + 40, h: rect.h + 40 }, o))) continue;
     obstacles.push(rect);
   }
 }
 
 function resolveObstacleCollisions(entity) {
-  for (const rect of obstacles) {
-    const closestX = Math.max(rect.x, Math.min(entity.x, rect.x + rect.w));
-    const closestY = Math.max(rect.y, Math.min(entity.y, rect.y + rect.h));
-    const dx = entity.x - closestX;
-    const dy = entity.y - closestY;
-    const dist = Math.hypot(dx, dy);
-    if (dist < entity.r) {
-      if (dist > 0.001) {
-        const overlap = entity.r - dist;
-        entity.x += (dx / dist) * overlap;
-        entity.y += (dy / dist) * overlap;
-      } else {
-        entity.y -= entity.r;
-      }
-    }
-  }
+  return GameCore.resolveObstacleCollisions(entity, obstacles);
 }
 
 function circleIntersectsAnyObstacle(cx, cy, cr) {
-  for (const rect of obstacles) {
-    const closestX = Math.max(rect.x, Math.min(cx, rect.x + rect.w));
-    const closestY = Math.max(rect.y, Math.min(cy, rect.y + rect.h));
-    if (Math.hypot(cx - closestX, cy - closestY) < cr) return true;
-  }
-  return false;
+  return GameCore.circleIntersectsAnyObstacle(cx, cy, cr, obstacles);
 }
 
 function reset() {
@@ -429,7 +394,7 @@ function reset() {
   pickups = [];
   score = 0;
   wave = 1;
-  enemiesToSpawn = 5;
+  enemiesToSpawn = GameCore.enemiesPerLevel(wave);
   spawnTimer = 0;
   fireTimer = 0;
   shake = 0;
@@ -450,20 +415,18 @@ function spawnEnemy() {
   else if (edge === 2) { x = Math.random() * canvas.width; y = -30; }
   else { x = Math.random() * canvas.width; y = canvas.height + 30; }
 
-  const kind = pickEnemyKind();
-  const def = ENEMY_KINDS[kind];
-  const baseSpeed = (1 + Math.min(wave * 0.08, 2.0)) * def.speedMul;
-  const baseHp = Math.round((2 + Math.floor(wave / 4)) * def.hpMul);
+  const kind = GameCore.pickEnemyKind(wave);
+  const stats = GameCore.enemyStatsForLevel(kind, wave);
   enemies.push({
     kind,
     x, y,
-    r: def.baseR + Math.random() * 4,
-    speed: baseSpeed + Math.random() * 0.4,
-    hp: baseHp,
-    maxHp: baseHp,
-    hue: def.hue + Math.random() * 20 - 10,
+    r: stats.r + Math.random() * 4,
+    speed: stats.speed + Math.random() * 0.4,
+    hp: stats.hp,
+    maxHp: stats.hp,
+    hue: stats.hue + Math.random() * 20 - 10,
     wobble: Math.random() * Math.PI * 2,
-    contactDamage: def.contactDamage,
+    contactDamage: stats.contactDamage,
     shootCooldown: 60 + Math.random() * 40,
     preferredRange: 220
   });
@@ -515,25 +478,19 @@ function spawnSparks(x, y) {
 }
 
 function maybeDropPickup(x, y) {
-  if (Math.random() > 0.18) return;
-  const types = ['health', 'spread', 'rapid'];
-  const type = types[Math.floor(Math.random() * types.length)];
+  const type = GameCore.rollPickupDrop();
+  if (!type) return;
   pickups.push({ x, y, type, r: 12, bob: Math.random() * Math.PI * 2 });
 }
 
 function applyPickup(p) {
   playPickup();
-  if (p.type === 'health') {
-    player.health = Math.min(player.maxHealth, player.health + 30);
-    healthBar.style.width = player.health + '%';
-  } else {
-    player.weapon = p.type;
-    player.weaponTimer = 480;
-  }
+  GameCore.applyPickupEffect(player, p.type);
+  healthBar.style.width = player.health + '%';
 }
 
 function fireCooldown() {
-  return player.weapon === 'rapid' ? 4 : 8;
+  return GameCore.fireCooldown(player.weapon);
 }
 
 function shoot(angle) {
@@ -606,7 +563,7 @@ function update() {
     }
   } else if (enemies.length === 0) {
     wave++;
-    enemiesToSpawn = 4 + wave;
+    enemiesToSpawn = GameCore.enemiesPerLevel(wave);
     waveEl.textContent = `Level: ${wave}`;
     levelBannerTimer = 100;
   }
@@ -630,7 +587,7 @@ function update() {
     }
     for (let j = enemies.length - 1; j >= 0; j--) {
       const e = enemies[j];
-      if (Math.hypot(b.x - e.x, b.y - e.y) < e.r + b.r) {
+      if (GameCore.circlesOverlap(b.x, b.y, b.r, e.x, e.y, e.r)) {
         e.hp--;
         spawnBlood(b.x, b.y, 6, 3);
         bullets.splice(i, 1);
@@ -664,7 +621,7 @@ function update() {
       enemyProjectiles.splice(i, 1);
       continue;
     }
-    if (Math.hypot(p.x - player.x, p.y - player.y) < player.r + p.r) {
+    if (GameCore.circlesOverlap(p.x, p.y, p.r, player.x, player.y, player.r)) {
       if (player.hurtCooldown <= 0) {
         player.health -= p.damage;
         player.hurtCooldown = 20;
@@ -729,7 +686,7 @@ function update() {
   for (let i = pickups.length - 1; i >= 0; i--) {
     const p = pickups[i];
     p.bob += 0.08;
-    if (Math.hypot(player.x - p.x, player.y - p.y) < player.r + p.r) {
+    if (GameCore.circlesOverlap(player.x, player.y, player.r, p.x, p.y, p.r)) {
       applyPickup(p);
       pickups.splice(i, 1);
     }
