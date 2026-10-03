@@ -10,10 +10,11 @@ const gameoverEl = document.getElementById('gameover');
 const finalScoreEl = document.getElementById('final-score');
 const startBtn = document.getElementById('start-btn');
 const restartBtn = document.getElementById('restart-btn');
+const controlBar = document.getElementById('control-bar');
 
 function resize() {
   canvas.width = window.innerWidth;
-  canvas.height = window.innerHeight;
+  canvas.height = window.innerHeight - controlBar.getBoundingClientRect().height;
 }
 window.addEventListener('resize', resize);
 resize();
@@ -168,9 +169,15 @@ function makeMoveStick(elId) {
   let originX = 0, originY = 0;
 
   function start(touch) {
+    // The touch zone is much bigger than the visible 130px stick (it fills
+    // its whole half of the control bar so it's easy to grab). maxR must
+    // scale with that zone, or almost any touch lands outside a tiny fixed
+    // radius and instantly clamps to full deflection — no graduated control
+    // at all, which read as "unresponsive" despite dx/dy changing correctly.
     const rect = el.getBoundingClientRect();
     originX = rect.left + rect.width / 2;
     originY = rect.top + rect.height / 2;
+    state.maxR = Math.min(rect.width, rect.height) / 2 * 0.85;
     state.touchId = touch.identifier;
     el.classList.add('active');
     move(touch);
@@ -313,6 +320,34 @@ speedSlider.addEventListener('input', () => {
   player.speed = BASE_SPEED * speedMultiplier;
 });
 
+// ===== Control bar size (adjustable, persisted) =====
+const controlSizeSlider = document.getElementById('control-size-slider');
+const controlSizeValueEl = document.getElementById('control-size-value');
+
+function loadControlSize() {
+  try {
+    const v = parseInt(localStorage.getItem('carnageArenaControlSize'), 10);
+    return isNaN(v) ? 190 : v;
+  } catch (e) {
+    return 190;
+  }
+}
+function saveControlSize(v) {
+  try { localStorage.setItem('carnageArenaControlSize', v); } catch (e) { /* ignore */ }
+}
+
+let controlSize = loadControlSize();
+controlSizeSlider.value = controlSize;
+controlSizeValueEl.textContent = controlSize + 'px';
+document.documentElement.style.setProperty('--control-bar-height', controlSize + 'px');
+controlSizeSlider.addEventListener('input', () => {
+  controlSize = parseInt(controlSizeSlider.value, 10);
+  controlSizeValueEl.textContent = controlSize + 'px';
+  saveControlSize(controlSize);
+  document.documentElement.style.setProperty('--control-bar-height', controlSize + 'px');
+  resize();
+});
+
 // ===== Enemy kind definitions =====
 const ENEMY_KINDS = {
   grunt: { baseR: 17, speedMul: 1, hpMul: 1, contactDamage: 10, hue: 105, label: 'grunt' },
@@ -330,7 +365,7 @@ function pickEnemyKind() {
 // ===== Game state =====
 let player = { x: 0, y: 0, r: 16, speed: BASE_SPEED * speedMultiplier, health: 100, maxHealth: 100, hurtCooldown: 0, angle: -Math.PI / 2, weapon: 'normal', weaponTimer: 0 };
 let bullets = [], enemies = [], particles = [], splatters = [], obstacles = [], enemyProjectiles = [], pickups = [];
-let score = 0, wave = 1, enemiesToSpawn = 0, spawnTimer = 0, fireTimer = 0, running = false, shake = 0;
+let score = 0, wave = 1, enemiesToSpawn = 0, spawnTimer = 0, fireTimer = 0, running = false, shake = 0, levelBannerTimer = 0;
 
 function rectsOverlap(a, b) {
   return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
@@ -398,11 +433,12 @@ function reset() {
   spawnTimer = 0;
   fireTimer = 0;
   shake = 0;
+  levelBannerTimer = 0;
   running = true;
   spawnObstacles();
   healthBar.style.width = '100%';
   scoreEl.textContent = 'Score: 0';
-  waveEl.textContent = 'Wave: 1';
+  waveEl.textContent = 'Level: 1';
   weaponStatusEl.classList.add('hidden');
 }
 
@@ -416,8 +452,8 @@ function spawnEnemy() {
 
   const kind = pickEnemyKind();
   const def = ENEMY_KINDS[kind];
-  const baseSpeed = (1 + Math.min(wave * 0.15, 2.5)) * def.speedMul;
-  const baseHp = Math.round((2 + Math.floor(wave / 3)) * def.hpMul);
+  const baseSpeed = (1 + Math.min(wave * 0.08, 2.0)) * def.speedMul;
+  const baseHp = Math.round((2 + Math.floor(wave / 4)) * def.hpMul);
   enemies.push({
     kind,
     x, y,
@@ -520,7 +556,7 @@ function shoot(angle) {
 
 function endGame() {
   running = false;
-  finalScoreEl.textContent = `Score: ${score} — Wave ${wave}`;
+  finalScoreEl.textContent = `Score: ${score} — Level ${wave}`;
   gameoverEl.classList.remove('hidden');
 }
 
@@ -528,14 +564,13 @@ function endGame() {
 function update() {
   if (!running) return;
 
-  // movement from left stick (quadratic ease-in: small nudges move slowly, full push is full speed)
+  // movement from left stick (linear: speed tracks deflection directly, for responsiveness)
   const mdx = moveStick.dx, mdy = moveStick.dy;
   const len = Math.hypot(mdx, mdy);
-  if (len > 0.12) {
+  if (len > 0.08) {
     const mag = Math.min(len, 1);
-    const curved = mag * mag;
-    player.x += (mdx / len) * player.speed * curved;
-    player.y += (mdy / len) * player.speed * curved;
+    player.x += (mdx / len) * player.speed * mag;
+    player.y += (mdy / len) * player.speed * mag;
   }
   player.x = Math.max(player.r, Math.min(canvas.width - player.r, player.x));
   player.y = Math.max(player.r, Math.min(canvas.height - player.r, player.y));
@@ -571,9 +606,12 @@ function update() {
     }
   } else if (enemies.length === 0) {
     wave++;
-    enemiesToSpawn = 4 + wave * 2;
-    waveEl.textContent = `Wave: ${wave}`;
+    enemiesToSpawn = 4 + wave;
+    waveEl.textContent = `Level: ${wave}`;
+    levelBannerTimer = 100;
   }
+
+  if (levelBannerTimer > 0) levelBannerTimer--;
 
   // bullets
   for (let i = bullets.length - 1; i >= 0; i--) {
@@ -843,6 +881,19 @@ function draw() {
   ctx.fillStyle = '#eee';
   ctx.fillRect(player.r - 4, -4, 20, 8);
   ctx.restore();
+
+  if (levelBannerTimer > 0) {
+    const alpha = Math.min(1, levelBannerTimer / 30);
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = '#f33';
+    ctx.font = 'bold 40px "Courier New", monospace';
+    ctx.textAlign = 'center';
+    ctx.shadowColor = '#800';
+    ctx.shadowBlur = 16;
+    ctx.fillText(`LEVEL ${wave}`, canvas.width / 2, canvas.height / 2 - 80);
+    ctx.restore();
+  }
 
   ctx.restore();
 }

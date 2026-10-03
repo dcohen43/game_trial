@@ -12,27 +12,34 @@
   <div id="hud">
     <div id="health-wrap"><div id="health-bar"></div></div>
     <div id="score">Score: 0</div>
-    <div id="wave">Wave: 1</div>
+    <div id="wave">Level: 1</div>
     <div id="weapon-status" class="hidden"></div>
   </div>
   <canvas id="game"></canvas>
 
-  <div id="move-stick">
-    <div class="stick-base"></div>
-    <div class="stick-knob"></div>
-  </div>
-  <div id="look-zone">
-    <div id="look-indicator"></div>
+  <div id="control-bar">
+    <div id="move-stick">
+      <div class="stick-base"></div>
+      <div class="stick-knob"></div>
+    </div>
+    <div id="look-zone">
+      <div id="look-indicator"></div>
+    </div>
   </div>
 
   <div id="overlay">
     <h1>CARNAGE ARENA</h1>
-    <p>Move stick (bottom-left) to walk. Touch and drag anywhere on the right to aim &amp; fire.</p>
+    <p>Move stick (bottom-left) to walk. Touch and drag the bottom-right to aim &amp; fire.</p>
     <p class="hint">Brutes tank hits. Spitters snipe from range. Use cover. Grab drops.</p>
     <div id="settings">
       <label for="speed-slider">Move Speed</label>
       <input type="range" id="speed-slider" min="0.4" max="1.3" step="0.05">
       <span id="speed-value"></span>
+    </div>
+    <div id="settings">
+      <label for="control-size-slider">Control Size</label>
+      <input type="range" id="control-size-slider" min="140" max="280" step="10">
+      <span id="control-size-value"></span>
     </div>
     <button id="start-btn">Start</button>
   </div>

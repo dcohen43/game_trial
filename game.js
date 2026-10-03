@@ -185,7 +185,7 @@ function pickEnemyKind() {
 // ===== Game state =====
 let player = { x: 0, y: 0, r: 16, speed: 4, health: 100, maxHealth: 100, hurtCooldown: 0, weapon: 'normal', weaponTimer: 0 };
 let bullets = [], enemies = [], particles = [], splatters = [], obstacles = [], enemyProjectiles = [], pickups = [];
-let score = 0, wave = 1, enemiesToSpawn = 0, spawnTimer = 0, fireTimer = 0, running = false, shake = 0;
+let score = 0, wave = 1, enemiesToSpawn = 0, spawnTimer = 0, fireTimer = 0, running = false, shake = 0, levelBannerTimer = 0;
 
 function rectsOverlap(a, b) {
   return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
@@ -253,11 +253,12 @@ function reset() {
   spawnTimer = 0;
   fireTimer = 0;
   shake = 0;
+  levelBannerTimer = 0;
   running = true;
   spawnObstacles();
   healthBar.style.width = '100%';
   scoreEl.textContent = 'Score: 0';
-  waveEl.textContent = 'Wave: 1';
+  waveEl.textContent = 'Level: 1';
   weaponStatusEl.classList.add('hidden');
 }
 
@@ -271,8 +272,8 @@ function spawnEnemy() {
 
   const kind = pickEnemyKind();
   const def = ENEMY_KINDS[kind];
-  const baseSpeed = (1 + Math.min(wave * 0.15, 2.5)) * def.speedMul;
-  const baseHp = Math.round((2 + Math.floor(wave / 3)) * def.hpMul);
+  const baseSpeed = (1 + Math.min(wave * 0.08, 2.0)) * def.speedMul;
+  const baseHp = Math.round((2 + Math.floor(wave / 4)) * def.hpMul);
   enemies.push({
     kind,
     x, y,
@@ -376,7 +377,7 @@ function shoot() {
 
 function endGame() {
   running = false;
-  finalScoreEl.textContent = `Score: ${score} — Wave ${wave}`;
+  finalScoreEl.textContent = `Score: ${score} — Level ${wave}`;
   gameoverEl.classList.remove('hidden');
 }
 
@@ -427,9 +428,12 @@ function update() {
     }
   } else if (enemies.length === 0) {
     wave++;
-    enemiesToSpawn = 4 + wave * 2;
-    waveEl.textContent = `Wave: ${wave}`;
+    enemiesToSpawn = 4 + wave;
+    waveEl.textContent = `Level: ${wave}`;
+    levelBannerTimer = 100;
   }
+
+  if (levelBannerTimer > 0) levelBannerTimer--;
 
   // bullets
   for (let i = bullets.length - 1; i >= 0; i--) {
@@ -688,6 +692,19 @@ function draw() {
   ctx.fillStyle = '#eee';
   ctx.fillRect(player.r - 4, -4, 20, 8); // gun barrel
   ctx.restore();
+
+  if (levelBannerTimer > 0) {
+    const alpha = Math.min(1, levelBannerTimer / 30);
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = '#f33';
+    ctx.font = 'bold 54px "Courier New", monospace';
+    ctx.textAlign = 'center';
+    ctx.shadowColor = '#800';
+    ctx.shadowBlur = 20;
+    ctx.fillText(`LEVEL ${wave}`, canvas.width / 2, canvas.height / 2 - 100);
+    ctx.restore();
+  }
 
   ctx.restore();
 }
