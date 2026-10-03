@@ -282,102 +282,17 @@ function makeMoveStick(elId) {
 
 const moveStick = makeMoveStick('move-stick');
 
-// ===== Aim & fire: touching down fires continuously; dragging rotates.
-//
-// Rotation is "rotary drag": the pivot is wherever you first touch down,
-// and the angle is tracked as your finger moves AROUND that pivot, not as
-// linear left/right distance. A full 360 degree turn only needs a small
-// circle traced around the pivot, not a swipe wider than the screen — so
-// you never have to lift your finger and re-grip to keep spinning one way.
-// It's still purely incremental (each frame adds the angle swept since the
-// last one), so it can never "snap" the aim back to anything, same as the
-// old linear-drag version. =====
-const lookZone = document.getElementById('look-zone');
-const lookIndicator = document.getElementById('look-indicator');
-// Kept well clear of the pivot: atan2 is extremely sensitive to tiny
-// position noise close to the center, which otherwise reads as a choppy,
-// jittery turn rather than a smooth one.
-const ROTARY_DEADZONE = 32;
-let lookTouchId = null;
-let pivotX = 0, pivotY = 0;
-let smoothDx = 0, smoothDy = 0;
-let lastTouchAngle = null;
-let fireHeld = false;
-
-function positionIndicator(x, y) {
-  lookIndicator.style.transform = `translate(${x}px, ${y}px)`;
-}
-
-// Shortest signed angular distance from `from` to `to`, wrapped to [-pi, pi],
-// so sweeping past the -pi/pi seam doesn't register as a sudden ~360 jump.
-function angleDelta(to, from) {
-  let d = to - from;
-  while (d > Math.PI) d -= Math.PI * 2;
-  while (d < -Math.PI) d += Math.PI * 2;
-  return d;
-}
-
-function updateLookAngle(touch) {
-  const rawDx = touch.clientX - pivotX;
-  const rawDy = touch.clientY - pivotY;
-  // Exponential smoothing on the raw offset damps per-sample touch noise
-  // before it ever reaches atan2, on top of the deadzone.
-  smoothDx += (rawDx - smoothDx) * 0.5;
-  smoothDy += (rawDy - smoothDy) * 0.5;
-  const dist = Math.hypot(smoothDx, smoothDy);
-  if (dist > ROTARY_DEADZONE) {
-    const currentAngle = Math.atan2(smoothDy, smoothDx);
-    if (lastTouchAngle !== null && running) {
-      player.angle += angleDelta(currentAngle, lastTouchAngle);
-    }
-    lastTouchAngle = currentAngle;
-  }
-  positionIndicator(touch.clientX, touch.clientY);
-}
-
-lookZone.addEventListener('touchstart', e => {
-  e.preventDefault();
-  if (lookTouchId === null) {
-    const t = e.changedTouches[0];
-    lookTouchId = t.identifier;
-    pivotX = t.clientX;
-    pivotY = t.clientY;
-    smoothDx = 0;
-    smoothDy = 0;
-    lastTouchAngle = null;
-    fireHeld = true;
-    lookIndicator.classList.add('active');
-    positionIndicator(t.clientX, t.clientY);
-  }
-}, { passive: false });
-
-window.addEventListener('touchmove', e => {
-  for (const t of e.changedTouches) {
-    if (t.identifier === lookTouchId) {
-      e.preventDefault();
-      updateLookAngle(t);
-    }
-  }
-}, { passive: false });
-
-window.addEventListener('touchend', e => {
-  for (const t of e.changedTouches) {
-    if (t.identifier === lookTouchId) {
-      lookTouchId = null;
-      fireHeld = false;
-      lookIndicator.classList.remove('active');
-    }
-  }
-});
-window.addEventListener('touchcancel', e => {
-  for (const t of e.changedTouches) {
-    if (t.identifier === lookTouchId) {
-      lookTouchId = null;
-      fireHeld = false;
-      lookIndicator.classList.remove('active');
-    }
-  }
-});
+// ===== Aim & fire stick: a real, fixed, always-visible joystick, same
+// mechanics as the move stick. Its CURRENT direction from center sets
+// facing directly every frame (read in update(), not accumulated from
+// deltas) — sliding a thumb around the stick's own small visible range
+// sweeps all 360 degrees with no lifting required, and since each frame
+// just reads a held position rather than differentiating noisy touch
+// samples, it isn't prone to the jitter a delta/rotary approach was.
+// Touching down fires continuously; releasing stops firing and holds the
+// last facing (never snaps back to anything). =====
+const aimStick = makeMoveStick('look-zone');
+const AIM_DEADZONE = 0.15; // fraction of maxR below which direction is ignored
 
 // ===== Speed setting (adjustable, persisted) =====
 const BASE_SPEED = 4;
@@ -630,11 +545,16 @@ function update() {
     }
   }
 
-  // (aiming is handled by the look-zone drag handler directly, see above)
+  // aim: read the stick's current direction directly, every frame — not a
+  // delta. Holding it deflected in a direction IS the facing, immediately.
+  const aimDist = Math.hypot(aimStick.dx, aimStick.dy);
+  if (aimDist > AIM_DEADZONE) {
+    player.angle = Math.atan2(aimStick.dy, aimStick.dx);
+  }
 
-  // fire from the dedicated FIRE button, toward the last aimed direction
+  // fire for as long as the aim stick is held, toward the current facing
   fireTimer--;
-  if (fireHeld && fireTimer <= 0) {
+  if (aimStick.touchId !== null && fireTimer <= 0) {
     shoot(player.angle);
     fireTimer = fireCooldown();
   }

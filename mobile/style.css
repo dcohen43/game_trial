@@ -127,10 +127,15 @@ canvas {
   background: rgba(255, 60, 60, 0.8);
 }
 
-/* ===== Aim & fire surface: touching down fires continuously, dragging
-   rotates (relative delta, like a camera drag — never "snaps" anywhere).
-   One gesture does both, same as a classic twin-stick right stick, but
-   without the absolute-joystick deadzone jank that felt bad before. */
+/* ===== Aim & fire stick: a real, always-visible joystick like the move
+   stick. The knob's CURRENT direction from center directly sets facing,
+   continuously, every frame — not a delta or an angle swept around a
+   pivot. Sweeping your thumb around the stick's small, visible range
+   covers all 360 degrees with no lifting, and since the angle is read
+   fresh each frame from a position you can see and hold steady, it isn't
+   sensitive to touch-sampling noise the way delta-tracking was.
+   Touching down fires continuously; releasing stops firing and holds the
+   last facing. */
 #look-zone {
   position: relative;
   width: 50%;
@@ -138,9 +143,8 @@ canvas {
   touch-action: none;
 }
 
-#look-zone::before {
+#look-zone .stick-base {
   --size: clamp(84px, 24vmin, 130px);
-  content: '';
   position: absolute;
   top: 50%;
   left: 50%;
@@ -148,30 +152,26 @@ canvas {
   height: var(--size);
   margin: calc(var(--size) / -2) 0 0 calc(var(--size) / -2);
   border-radius: 50%;
-  background: rgba(255, 255, 255, 0.05);
-  border: 2px dashed rgba(255, 80, 80, 0.3);
-  pointer-events: none;
+  background: rgba(255, 255, 255, 0.08);
+  border: 2px solid rgba(255, 80, 80, 0.4);
 }
 
-#look-indicator {
-  --size: clamp(44px, 13vmin, 64px);
-  position: fixed;
-  top: 0;
-  left: 0;
+#look-zone .stick-knob {
+  --size: clamp(38px, 11vmin, 56px);
+  position: absolute;
+  top: 50%;
+  left: 50%;
   width: var(--size);
   height: var(--size);
   margin: calc(var(--size) / -2) 0 0 calc(var(--size) / -2);
   border-radius: 50%;
-  background: rgba(255, 40, 40, 0.3);
-  border: 3px solid rgba(255, 120, 120, 0.8);
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity 0.1s;
-  z-index: 16;
+  background: rgba(220, 40, 40, 0.55);
+  border: 2px solid rgba(255, 140, 140, 0.7);
+  transition: background 0.1s;
 }
 
-#look-indicator.active {
-  opacity: 1;
+#look-zone.active .stick-knob {
+  background: rgba(255, 60, 60, 0.8);
 }
 
 /* ===== Speed settings ===== */
