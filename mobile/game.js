@@ -12,9 +12,57 @@ const startBtn = document.getElementById('start-btn');
 const restartBtn = document.getElementById('restart-btn');
 const controlBar = document.getElementById('control-bar');
 
+// Scales world-object sizes (enemies, player, obstacles, projectiles) down
+// on small screens. Fixed pixel sizes designed for a tablet-size canvas
+// read as comically oversized on a phone-size canvas, since the same pixel
+// count covers a much bigger fraction of the screen. 700px is roughly a
+// tablet landscape canvas (scale 1); it floors at 0.55 so things stay
+// legible/hittable on the smallest phones, and never scales above 1 so
+// nothing balloons on very large screens.
+let worldScale = 1;
+
+// Floor grid + vignette, pre-rendered to an offscreen canvas and just
+// blitted each frame instead of redrawn — cheap regardless of how many
+// grid lines it takes, and gives the arena some visual depth instead of a
+// flat fill.
+const bgCanvas = document.createElement('canvas');
+const bgCtx = bgCanvas.getContext('2d');
+
+function renderBackground() {
+  bgCanvas.width = canvas.width + 40;
+  bgCanvas.height = canvas.height + 40;
+  bgCtx.fillStyle = '#1a0e0e';
+  bgCtx.fillRect(0, 0, bgCanvas.width, bgCanvas.height);
+
+  bgCtx.strokeStyle = 'rgba(255, 60, 60, 0.05)';
+  bgCtx.lineWidth = 1;
+  const spacing = 48;
+  bgCtx.beginPath();
+  for (let x = 0; x < bgCanvas.width; x += spacing) {
+    bgCtx.moveTo(x + 0.5, 0);
+    bgCtx.lineTo(x + 0.5, bgCanvas.height);
+  }
+  for (let y = 0; y < bgCanvas.height; y += spacing) {
+    bgCtx.moveTo(0, y + 0.5);
+    bgCtx.lineTo(bgCanvas.width, y + 0.5);
+  }
+  bgCtx.stroke();
+
+  const grad = bgCtx.createRadialGradient(
+    bgCanvas.width / 2, bgCanvas.height / 2, Math.min(bgCanvas.width, bgCanvas.height) * 0.2,
+    bgCanvas.width / 2, bgCanvas.height / 2, Math.max(bgCanvas.width, bgCanvas.height) * 0.7
+  );
+  grad.addColorStop(0, 'rgba(0,0,0,0)');
+  grad.addColorStop(1, 'rgba(0,0,0,0.5)');
+  bgCtx.fillStyle = grad;
+  bgCtx.fillRect(0, 0, bgCanvas.width, bgCanvas.height);
+}
+
 function resize() {
   canvas.width = window.innerWidth;
   canvas.height = window.innerHeight - controlBar.getBoundingClientRect().height;
+  worldScale = Math.max(0.55, Math.min(1, Math.min(canvas.width, canvas.height) / 700));
+  renderBackground();
 }
 window.addEventListener('resize', resize);
 resize();
@@ -246,9 +294,13 @@ const moveStick = makeMoveStick('move-stick');
 // old linear-drag version. =====
 const lookZone = document.getElementById('look-zone');
 const lookIndicator = document.getElementById('look-indicator');
-const ROTARY_DEADZONE = 10; // px from the pivot before angle tracking engages
+// Kept well clear of the pivot: atan2 is extremely sensitive to tiny
+// position noise close to the center, which otherwise reads as a choppy,
+// jittery turn rather than a smooth one.
+const ROTARY_DEADZONE = 32;
 let lookTouchId = null;
 let pivotX = 0, pivotY = 0;
+let smoothDx = 0, smoothDy = 0;
 let lastTouchAngle = null;
 let fireHeld = false;
 
@@ -266,11 +318,15 @@ function angleDelta(to, from) {
 }
 
 function updateLookAngle(touch) {
-  const dx = touch.clientX - pivotX;
-  const dy = touch.clientY - pivotY;
-  const dist = Math.hypot(dx, dy);
+  const rawDx = touch.clientX - pivotX;
+  const rawDy = touch.clientY - pivotY;
+  // Exponential smoothing on the raw offset damps per-sample touch noise
+  // before it ever reaches atan2, on top of the deadzone.
+  smoothDx += (rawDx - smoothDx) * 0.5;
+  smoothDy += (rawDy - smoothDy) * 0.5;
+  const dist = Math.hypot(smoothDx, smoothDy);
   if (dist > ROTARY_DEADZONE) {
-    const currentAngle = Math.atan2(dy, dx);
+    const currentAngle = Math.atan2(smoothDy, smoothDx);
     if (lastTouchAngle !== null && running) {
       player.angle += angleDelta(currentAngle, lastTouchAngle);
     }
@@ -286,6 +342,8 @@ lookZone.addEventListener('touchstart', e => {
     lookTouchId = t.identifier;
     pivotX = t.clientX;
     pivotY = t.clientY;
+    smoothDx = 0;
+    smoothDy = 0;
     lastTouchAngle = null;
     fireHeld = true;
     lookIndicator.classList.add('active');
@@ -380,7 +438,7 @@ controlSizeSlider.addEventListener('input', () => {
 const ENEMY_KINDS = GameCore.ENEMY_KINDS;
 
 // ===== Game state =====
-let player = { x: 0, y: 0, r: 16, speed: BASE_SPEED * speedMultiplier, health: 100, maxHealth: 100, hurtCooldown: 0, angle: -Math.PI / 2, weapon: 'normal', weaponTimer: 0 };
+let player = { x: 0, y: 0, r: 16 * worldScale, speed: BASE_SPEED * speedMultiplier, health: 100, maxHealth: 100, hurtCooldown: 0, angle: -Math.PI / 2, weapon: 'normal', weaponTimer: 0 };
 let bullets = [], enemies = [], particles = [], splatters = [], obstacles = [], enemyProjectiles = [], pickups = [];
 let score = 0, wave = 1, enemiesToSpawn = 0, spawnTimer = 0, fireTimer = 0, running = false, shake = 0, levelBannerTimer = 0;
 
@@ -391,11 +449,11 @@ function spawnObstacles() {
   let attempts = 0;
   while (obstacles.length < count && attempts < 200) {
     attempts++;
-    const w = 50 + Math.random() * 70;
-    const h = 50 + Math.random() * 70;
+    const w = (50 + Math.random() * 70) * worldScale;
+    const h = (50 + Math.random() * 70) * worldScale;
     const x = 40 + Math.random() * (canvas.width - 80 - w);
     const y = 40 + Math.random() * (canvas.height - 80 - h);
-    const rect = { x, y, w, h };
+    const rect = { x, y, w, h, variant: Math.floor(Math.random() * 3) };
     const rectCx = x + w / 2, rectCy = y + h / 2;
     if (Math.hypot(rectCx - cx, rectCy - cy) < 150) continue;
     if (obstacles.some(o => GameCore.rectsOverlap(
@@ -413,7 +471,7 @@ function circleIntersectsAnyObstacle(cx, cy, cr) {
 }
 
 function reset() {
-  player = { x: canvas.width / 2, y: canvas.height / 2, r: 16, speed: BASE_SPEED * speedMultiplier, health: 100, maxHealth: 100, hurtCooldown: 0, angle: -Math.PI / 2, weapon: 'normal', weaponTimer: 0 };
+  player = { x: canvas.width / 2, y: canvas.height / 2, r: 16 * worldScale, speed: BASE_SPEED * speedMultiplier, health: 100, maxHealth: 100, hurtCooldown: 0, angle: -Math.PI / 2, weapon: 'normal', weaponTimer: 0 };
   bullets = [];
   enemies = [];
   particles = [];
@@ -448,7 +506,7 @@ function spawnEnemy() {
   enemies.push({
     kind,
     x, y,
-    r: stats.r + Math.random() * 4,
+    r: (stats.r + Math.random() * 4) * worldScale,
     speed: stats.speed + Math.random() * 0.4,
     hp: stats.hp,
     maxHp: stats.hp,
@@ -508,7 +566,7 @@ function spawnSparks(x, y) {
 function maybeDropPickup(x, y) {
   const type = GameCore.rollPickupDrop();
   if (!type) return;
-  pickups.push({ x, y, type, r: 12, bob: Math.random() * Math.PI * 2 });
+  pickups.push({ x, y, type, r: 12 * worldScale, bob: Math.random() * Math.PI * 2 });
 }
 
 function applyPickup(p) {
@@ -527,7 +585,7 @@ function shoot(angle) {
     y: player.y + Math.sin(a) * player.r,
     vx: Math.cos(a) * 11,
     vy: Math.sin(a) * 11,
-    r: 4
+    r: 4 * worldScale
   });
   if (player.weapon === 'spread') {
     makeBullet(angle - 0.22);
@@ -685,7 +743,7 @@ function update() {
         enemyProjectiles.push({
           x: e.x, y: e.y,
           vx: Math.cos(angle) * 6, vy: Math.sin(angle) * 6,
-          r: 5, damage: 8
+          r: 5 * worldScale, damage: 8
         });
         playEnemyShoot();
         e.shootCooldown = 90 + Math.random() * 40;
@@ -774,6 +832,48 @@ function drawEnemy(e) {
   ctx.fillRect(e.x - e.r, e.y - e.r - 8, (e.r * 2) * (e.hp / e.maxHp), 4);
 }
 
+// Three purely-visual obstacle styles over the same rectangular hitbox, so
+// the arena doesn't read as identical boxes copy-pasted everywhere.
+function drawObstacle(rect) {
+  const { x, y, w, h, variant } = rect;
+  if (variant === 1) {
+    // rusted container: warm tint, diagonal corner braces
+    ctx.fillStyle = '#331c14';
+    ctx.fillRect(x, y, w, h);
+    ctx.strokeStyle = '#6b3a24';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(x, y, w, h);
+    ctx.strokeStyle = 'rgba(180, 100, 60, 0.5)';
+    ctx.lineWidth = 3;
+    const c = Math.min(w, h) * 0.25;
+    ctx.beginPath();
+    ctx.moveTo(x, y + c); ctx.lineTo(x + c, y);
+    ctx.moveTo(x + w - c, y); ctx.lineTo(x + w, y + c);
+    ctx.moveTo(x + w, y + h - c); ctx.lineTo(x + w - c, y + h);
+    ctx.moveTo(x + c, y + h); ctx.lineTo(x, y + h - c);
+    ctx.stroke();
+  } else if (variant === 2) {
+    // wooden crate: darker fill, slat lines
+    ctx.fillStyle = '#231414';
+    ctx.fillRect(x, y, w, h);
+    ctx.strokeStyle = '#4a2828';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(x, y, w, h);
+    ctx.strokeStyle = 'rgba(100, 50, 40, 0.4)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(x, y + h * 0.33); ctx.lineTo(x + w, y + h * 0.33);
+    ctx.moveTo(x, y + h * 0.66); ctx.lineTo(x + w, y + h * 0.66);
+    ctx.stroke();
+  } else {
+    ctx.fillStyle = '#2a1818';
+    ctx.fillRect(x, y, w, h);
+    ctx.strokeStyle = '#4a2828';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(x, y, w, h);
+  }
+}
+
 const PICKUP_COLORS = { health: '#3f3', spread: '#ff0', rapid: '#3cf' };
 
 function drawPickup(p) {
@@ -799,8 +899,7 @@ function draw() {
     ctx.translate((Math.random() - 0.5) * shake, (Math.random() - 0.5) * shake);
   }
 
-  ctx.fillStyle = '#1a0e0e';
-  ctx.fillRect(-20, -20, canvas.width + 40, canvas.height + 40);
+  ctx.drawImage(bgCanvas, -20, -20);
 
   for (const s of splatters) {
     ctx.fillStyle = `rgba(120, 0, 10, ${s.alpha})`;
@@ -809,13 +908,7 @@ function draw() {
     ctx.fill();
   }
 
-  for (const rect of obstacles) {
-    ctx.fillStyle = '#2a1818';
-    ctx.fillRect(rect.x, rect.y, rect.w, rect.h);
-    ctx.strokeStyle = '#4a2828';
-    ctx.lineWidth = 2;
-    ctx.strokeRect(rect.x, rect.y, rect.w, rect.h);
-  }
+  for (const rect of obstacles) drawObstacle(rect);
 
   for (const p of pickups) drawPickup(p);
 
