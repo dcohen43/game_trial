@@ -3,3 +3,7 @@ services:
     build: .
     ports:
       - "8080:80"
+  game-mobile:
+    build: ./mobile
+    ports:
+      - "8081:80"

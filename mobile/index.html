@@ -2,7 +2,10 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Carnage Arena</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#0a0505">
+<meta name="mobile-web-app-capable" content="yes">
+<title>Carnage Arena Mobile</title>
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -13,9 +16,19 @@
     <div id="weapon-status" class="hidden"></div>
   </div>
   <canvas id="game"></canvas>
+
+  <div id="move-stick" class="stick">
+    <div class="stick-base"></div>
+    <div class="stick-knob"></div>
+  </div>
+  <div id="aim-stick" class="stick">
+    <div class="stick-base"></div>
+    <div class="stick-knob"></div>
+  </div>
+
   <div id="overlay">
     <h1>CARNAGE ARENA</h1>
-    <p>WASD to move. Mouse to aim. Click (or hold) to shoot.</p>
+    <p>Left stick to move. Right stick to aim &amp; fire.</p>
     <p class="hint">Brutes tank hits. Spitters snipe from range. Use cover. Grab drops.</p>
     <button id="start-btn">Start</button>
   </div>

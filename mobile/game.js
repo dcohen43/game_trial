@@ -159,14 +159,75 @@ function playPlayerHurt() {
   osc.stop(t + 0.25);
 }
 
-// ===== Input =====
-const keys = {};
-const mouse = { x: 0, y: 0, down: false };
-window.addEventListener('keydown', e => keys[e.key.toLowerCase()] = true);
-window.addEventListener('keyup', e => keys[e.key.toLowerCase()] = false);
-canvas.addEventListener('mousemove', e => { mouse.x = e.clientX; mouse.y = e.clientY; });
-canvas.addEventListener('mousedown', () => { mouse.down = true; });
-window.addEventListener('mouseup', () => { mouse.down = false; });
+// ===== Virtual joysticks (touch) =====
+function makeStick(elId) {
+  const el = document.getElementById(elId);
+  const knob = el.querySelector('.stick-knob');
+  const state = { el, knob, touchId: null, dx: 0, dy: 0, active: false, cx: 0, cy: 0, maxR: 40 };
+
+  function start(touch) {
+    const rect = el.getBoundingClientRect();
+    state.cx = rect.left + rect.width / 2;
+    state.cy = rect.top + rect.height / 2;
+    state.touchId = touch.identifier;
+    state.active = true;
+    el.classList.add('active');
+    move(touch);
+  }
+
+  function move(touch) {
+    let dx = touch.clientX - state.cx;
+    let dy = touch.clientY - state.cy;
+    const dist = Math.hypot(dx, dy);
+    if (dist > state.maxR) {
+      dx = (dx / dist) * state.maxR;
+      dy = (dy / dist) * state.maxR;
+    }
+    knob.style.transform = `translate(${dx}px, ${dy}px)`;
+    const norm = state.maxR;
+    state.dx = dx / norm;
+    state.dy = dy / norm;
+  }
+
+  function end() {
+    state.touchId = null;
+    state.active = false;
+    state.dx = 0;
+    state.dy = 0;
+    knob.style.transform = 'translate(0px, 0px)';
+    el.classList.remove('active');
+  }
+
+  el.addEventListener('touchstart', e => {
+    e.preventDefault();
+    if (state.touchId === null) start(e.changedTouches[0]);
+  }, { passive: false });
+
+  window.addEventListener('touchmove', e => {
+    for (const touch of e.changedTouches) {
+      if (touch.identifier === state.touchId) {
+        e.preventDefault();
+        move(touch);
+      }
+    }
+  }, { passive: false });
+
+  window.addEventListener('touchend', e => {
+    for (const touch of e.changedTouches) {
+      if (touch.identifier === state.touchId) end();
+    }
+  });
+  window.addEventListener('touchcancel', e => {
+    for (const touch of e.changedTouches) {
+      if (touch.identifier === state.touchId) end();
+    }
+  });
+
+  return state;
+}
+
+const moveStick = makeStick('move-stick');
+const aimStick = makeStick('aim-stick');
 
 // ===== Enemy kind definitions =====
 const ENEMY_KINDS = {
@@ -183,7 +244,7 @@ function pickEnemyKind() {
 }
 
 // ===== Game state =====
-let player = { x: 0, y: 0, r: 16, speed: 4, health: 100, maxHealth: 100, hurtCooldown: 0, weapon: 'normal', weaponTimer: 0 };
+let player = { x: 0, y: 0, r: 16, speed: 4, health: 100, maxHealth: 100, hurtCooldown: 0, angle: -Math.PI / 2, weapon: 'normal', weaponTimer: 0 };
 let bullets = [], enemies = [], particles = [], splatters = [], obstacles = [], enemyProjectiles = [], pickups = [];
 let score = 0, wave = 1, enemiesToSpawn = 0, spawnTimer = 0, fireTimer = 0, running = false, shake = 0;
 
@@ -193,18 +254,18 @@ function rectsOverlap(a, b) {
 
 function spawnObstacles() {
   obstacles = [];
-  const count = 6;
+  const count = 5;
   const cx = canvas.width / 2, cy = canvas.height / 2;
   let attempts = 0;
   while (obstacles.length < count && attempts < 200) {
     attempts++;
-    const w = 60 + Math.random() * 90;
-    const h = 60 + Math.random() * 90;
-    const x = 60 + Math.random() * (canvas.width - 120 - w);
-    const y = 60 + Math.random() * (canvas.height - 120 - h);
+    const w = 50 + Math.random() * 70;
+    const h = 50 + Math.random() * 70;
+    const x = 40 + Math.random() * (canvas.width - 80 - w);
+    const y = 40 + Math.random() * (canvas.height - 80 - h);
     const rect = { x, y, w, h };
     const rectCx = x + w / 2, rectCy = y + h / 2;
-    if (Math.hypot(rectCx - cx, rectCy - cy) < 180) continue;
+    if (Math.hypot(rectCx - cx, rectCy - cy) < 150) continue;
     if (obstacles.some(o => rectsOverlap(
       { x: rect.x - 20, y: rect.y - 20, w: rect.w + 40, h: rect.h + 40 }, o))) continue;
     obstacles.push(rect);
@@ -240,7 +301,7 @@ function circleIntersectsAnyObstacle(cx, cy, cr) {
 }
 
 function reset() {
-  player = { x: canvas.width / 2, y: canvas.height / 2, r: 16, speed: 4, health: 100, maxHealth: 100, hurtCooldown: 0, weapon: 'normal', weaponTimer: 0 };
+  player = { x: canvas.width / 2, y: canvas.height / 2, r: 16, speed: 4, health: 100, maxHealth: 100, hurtCooldown: 0, angle: -Math.PI / 2, weapon: 'normal', weaponTimer: 0 };
   bullets = [];
   enemies = [];
   particles = [];
@@ -284,7 +345,7 @@ function spawnEnemy() {
     wobble: Math.random() * Math.PI * 2,
     contactDamage: def.contactDamage,
     shootCooldown: 60 + Math.random() * 40,
-    preferredRange: 260
+    preferredRange: 220
   });
 }
 
@@ -355,8 +416,7 @@ function fireCooldown() {
   return player.weapon === 'rapid' ? 4 : 8;
 }
 
-function shoot() {
-  const angle = Math.atan2(mouse.y - player.y, mouse.x - player.x);
+function shoot(angle) {
   const makeBullet = a => bullets.push({
     x: player.x + Math.cos(a) * player.r,
     y: player.y + Math.sin(a) * player.r,
@@ -384,16 +444,12 @@ function endGame() {
 function update() {
   if (!running) return;
 
-  // movement
-  let dx = 0, dy = 0;
-  if (keys['w']) dy -= 1;
-  if (keys['s']) dy += 1;
-  if (keys['a']) dx -= 1;
-  if (keys['d']) dx += 1;
-  const len = Math.hypot(dx, dy);
-  if (len > 0) {
-    player.x += (dx / len) * player.speed;
-    player.y += (dy / len) * player.speed;
+  // movement from left stick
+  const mdx = moveStick.dx, mdy = moveStick.dy;
+  const len = Math.hypot(mdx, mdy);
+  if (len > 0.15) {
+    player.x += (mdx / Math.max(len, 1)) * player.speed * Math.min(len, 1);
+    player.y += (mdy / Math.max(len, 1)) * player.speed * Math.min(len, 1);
   }
   player.x = Math.max(player.r, Math.min(canvas.width - player.r, player.x));
   player.y = Math.max(player.r, Math.min(canvas.height - player.r, player.y));
@@ -410,11 +466,16 @@ function update() {
     }
   }
 
-  // shooting
+  // aim + fire from right stick
+  const adx = aimStick.dx, ady = aimStick.dy;
+  const alen = Math.hypot(adx, ady);
   fireTimer--;
-  if (mouse.down && fireTimer <= 0) {
-    shoot();
-    fireTimer = fireCooldown();
+  if (alen > 0.25) {
+    player.angle = Math.atan2(ady, adx);
+    if (fireTimer <= 0) {
+      shoot(player.angle);
+      fireTimer = fireCooldown();
+    }
   }
 
   // spawn waves
@@ -676,17 +737,15 @@ function draw() {
     ctx.fill();
   }
 
-  // player
-  const angle = Math.atan2(mouse.y - player.y, mouse.x - player.x);
   ctx.save();
   ctx.translate(player.x, player.y);
-  ctx.rotate(angle);
+  ctx.rotate(player.angle);
   ctx.fillStyle = '#3cf';
   ctx.beginPath();
   ctx.arc(0, 0, player.r, 0, Math.PI * 2);
   ctx.fill();
   ctx.fillStyle = '#eee';
-  ctx.fillRect(player.r - 4, -4, 20, 8); // gun barrel
+  ctx.fillRect(player.r - 4, -4, 20, 8);
   ctx.restore();
 
   ctx.restore();
@@ -700,12 +759,27 @@ function loop() {
 }
 
 // ===== UI wiring =====
+function unlockAudio() {
+  if (actx.state === 'suspended') actx.resume();
+}
+
+startBtn.addEventListener('touchend', e => {
+  e.preventDefault();
+  unlockAudio();
+  overlay.classList.add('hidden');
+  reset();
+});
 startBtn.addEventListener('click', () => {
-  actx.resume();
+  unlockAudio();
   overlay.classList.add('hidden');
   reset();
 });
 
+restartBtn.addEventListener('touchend', e => {
+  e.preventDefault();
+  gameoverEl.classList.add('hidden');
+  reset();
+});
 restartBtn.addEventListener('click', () => {
   gameoverEl.classList.add('hidden');
   reset();
