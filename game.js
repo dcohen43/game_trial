@@ -25,10 +25,31 @@ const bgCtx = bgCanvas.getContext('2d');
 function renderBackground() {
   bgCanvas.width = canvas.width + 40;
   bgCanvas.height = canvas.height + 40;
-  bgCtx.fillStyle = '#20100f';
+
+  // Saturated crimson floor instead of a near-black field — the arena
+  // itself should read as vivid, dangerous ground, not an empty void.
+  const base = bgCtx.createRadialGradient(
+    bgCanvas.width / 2, bgCanvas.height / 2, 0,
+    bgCanvas.width / 2, bgCanvas.height / 2, Math.max(bgCanvas.width, bgCanvas.height) * 0.75
+  );
+  base.addColorStop(0, '#7a1c2c');
+  base.addColorStop(1, '#3a0f1a');
+  bgCtx.fillStyle = base;
   bgCtx.fillRect(0, 0, bgCanvas.width, bgCanvas.height);
 
-  bgCtx.strokeStyle = 'rgba(255, 70, 70, 0.07)';
+  // Dried-blood blotches baked into the floor, once, for a gorey, lived-in
+  // arena rather than a clean grid.
+  for (let i = 0; i < 35; i++) {
+    const bx = Math.random() * bgCanvas.width;
+    const by = Math.random() * bgCanvas.height;
+    const br = 18 + Math.random() * 46;
+    bgCtx.fillStyle = `rgba(100, 10, 20, ${0.10 + Math.random() * 0.14})`;
+    bgCtx.beginPath();
+    bgCtx.arc(bx, by, br, 0, Math.PI * 2);
+    bgCtx.fill();
+  }
+
+  bgCtx.strokeStyle = 'rgba(255, 110, 110, 0.25)';
   bgCtx.lineWidth = 1;
   const spacing = 56;
   bgCtx.beginPath();
@@ -42,13 +63,15 @@ function renderBackground() {
   }
   bgCtx.stroke();
 
-  const grad = bgCtx.createRadialGradient(
-    bgCanvas.width / 2, bgCanvas.height / 2, Math.min(bgCanvas.width, bgCanvas.height) * 0.25,
-    bgCanvas.width / 2, bgCanvas.height / 2, Math.max(bgCanvas.width, bgCanvas.height) * 0.7
+  // Light vignette (colored, not black) just to keep the corners a touch
+  // dimmer than the center so the HUD text stays legible.
+  const vignette = bgCtx.createRadialGradient(
+    bgCanvas.width / 2, bgCanvas.height / 2, Math.min(bgCanvas.width, bgCanvas.height) * 0.3,
+    bgCanvas.width / 2, bgCanvas.height / 2, Math.max(bgCanvas.width, bgCanvas.height) * 0.72
   );
-  grad.addColorStop(0, 'rgba(0,0,0,0)');
-  grad.addColorStop(1, 'rgba(0,0,0,0.45)');
-  bgCtx.fillStyle = grad;
+  vignette.addColorStop(0, 'rgba(20,0,8,0)');
+  vignette.addColorStop(1, 'rgba(20,0,8,0.35)');
+  bgCtx.fillStyle = vignette;
   bgCtx.fillRect(0, 0, bgCanvas.width, bgCanvas.height);
 }
 
@@ -394,7 +417,7 @@ function spawnBlood(x, y, amount, power) {
       maxLife: 30 + Math.random() * 30,
       size: 2 + Math.random() * 4,
       gravity: 0.15,
-      color: '200, 10, 20'
+      color: '255, 25, 40'
     });
   }
   if (splatters.length > 400) splatters.splice(0, 100);
@@ -570,14 +593,14 @@ function update() {
       if (b.pierce && b.hitIds.has(e.id)) continue;
       if (GameCore.circlesOverlap(b.x, b.y, b.r, e.x, e.y, e.r)) {
         e.hp--;
-        spawnBlood(b.x, b.y, 6, 3);
+        spawnBlood(b.x, b.y, 8, 3.5);
         if (b.pierce) {
           b.hitIds.add(e.id);
         } else {
           bullets.splice(i, 1);
         }
         if (e.hp <= 0) {
-          spawnBlood(e.x, e.y, 35, 6);
+          spawnBlood(e.x, e.y, 42, 7);
           playDeath();
           shake = 10;
           registerKill();
@@ -720,7 +743,7 @@ function drawEnemy(e) {
     }
     ctx.closePath();
     ctx.stroke();
-    ctx.fillStyle = `hsl(${e.hue}, 85%, 20%)`;
+    ctx.fillStyle = `hsl(${e.hue}, 90%, 38%)`;
     ctx.beginPath();
     for (let i = 0; i < 6; i++) {
       const a = (Math.PI * 2 / 6) * i;
@@ -745,7 +768,7 @@ function drawEnemy(e) {
     ctx.lineTo(-(e.r + 2) * 0.7, -(e.r + 2) * 0.8);
     ctx.closePath();
     ctx.stroke();
-    ctx.fillStyle = `hsl(${e.hue}, 85%, 28%)`;
+    ctx.fillStyle = `hsl(${e.hue}, 90%, 44%)`;
     ctx.beginPath();
     ctx.moveTo(e.r, 0);
     ctx.lineTo(-e.r * 0.7, e.r * 0.8);
@@ -762,7 +785,7 @@ function drawEnemy(e) {
     ctx.beginPath();
     ctx.arc(0, 0, e.r + 2, 0, Math.PI * 2);
     ctx.stroke();
-    ctx.fillStyle = `hsl(${e.hue}, 80%, 20%)`;
+    ctx.fillStyle = `hsl(${e.hue}, 85%, 38%)`;
     ctx.beginPath();
     ctx.arc(0, 0, e.r, 0, Math.PI * 2);
     ctx.fill();
@@ -850,7 +873,7 @@ function draw() {
   ctx.drawImage(bgCanvas, -20, -20);
 
   for (const s of splatters) {
-    ctx.fillStyle = `rgba(120, 0, 10, ${s.alpha})`;
+    ctx.fillStyle = `rgba(190, 10, 30, ${s.alpha})`;
     ctx.beginPath();
     ctx.arc(s.x, s.y, s.size, 0, Math.PI * 2);
     ctx.fill();
