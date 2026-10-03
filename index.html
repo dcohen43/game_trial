@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Carnage Arena</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div id="hud">
+    <div id="health-wrap"><div id="health-bar"></div></div>
+    <div id="score">Score: 0</div>
+    <div id="wave">Wave: 1</div>
+  </div>
+  <canvas id="game"></canvas>
+  <div id="overlay">
+    <h1>CARNAGE ARENA</h1>
+    <p>WASD to move. Mouse to aim. Click (or hold) to shoot.</p>
+    <button id="start-btn">Start</button>
+  </div>
+  <div id="gameover" class="hidden">
+    <h1>YOU DIED</h1>
+    <p id="final-score"></p>
+    <button id="restart-btn">Retry</button>
+  </div>
+  <script src="game.js"></script>
+</body>
+</html>
