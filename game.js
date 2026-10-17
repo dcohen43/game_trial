@@ -49,19 +49,10 @@ function renderBackground() {
     bgCtx.fill();
   }
 
-  bgCtx.strokeStyle = 'rgba(255, 110, 110, 0.25)';
-  bgCtx.lineWidth = 1;
-  const spacing = 56;
-  bgCtx.beginPath();
-  for (let x = 0; x < bgCanvas.width; x += spacing) {
-    bgCtx.moveTo(x + 0.5, 0);
-    bgCtx.lineTo(x + 0.5, bgCanvas.height);
-  }
-  for (let y = 0; y < bgCanvas.height; y += spacing) {
-    bgCtx.moveTo(0, y + 0.5);
-    bgCtx.lineTo(bgCanvas.width, y + 0.5);
-  }
-  bgCtx.stroke();
+  // Grid lines are NOT baked in here — they're drawn live each frame in
+  // draw() instead, so they can scroll at higher levels (see
+  // drawScrollingGrid). The blotches above stay fixed/baked since they
+  // aren't seamlessly tileable.
 
   // Light vignette (colored, not black) just to keep the corners a touch
   // dimmer than the center so the HUD text stays legible.
@@ -243,6 +234,8 @@ let player = { x: 0, y: 0, r: 16, speed: 4, health: 100, maxHealth: 100, hurtCoo
 let bullets = [], enemies = [], particles = [], splatters = [], obstacles = [], enemyProjectiles = [], pickups = [];
 let score = 0, wave = 1, enemiesToSpawn = 0, spawnTimer = 0, fireTimer = 0, running = false, shake = 0, levelBannerTimer = 0, regenGrace = 0;
 let comboCount = 0, comboTimer = 0, countdownTimer = 0, nextEnemyId = 1;
+const GRID_SPACING = 56; // must match the spacing baked background used before the grid moved live
+let bgScrollX = 0, bgScrollY = 0; // drifts from level 3+ so the floor itself becomes harder to track
 
 function updateLivesHud() {
   livesEl.textContent = `Lives: ${player.lives}`;
@@ -369,6 +362,8 @@ function reset() {
   comboCount = 0;
   comboTimer = 0;
   countdownTimer = 0;
+  bgScrollX = 0;
+  bgScrollY = 0;
   running = true;
   spawnObstacles();
   healthBar.style.width = '100%';
@@ -564,6 +559,13 @@ function update() {
   }
 
   if (levelBannerTimer > 0) levelBannerTimer--;
+
+  // Floor drift (level 3+): a diagonal crawl, purely visual — only the
+  // grid's draw offset moves, so it adds disorientation without touching
+  // any real world/collision coordinates.
+  const bgSpeed = GameCore.backgroundScrollSpeedForLevel(wave);
+  bgScrollX += bgSpeed;
+  bgScrollY += bgSpeed * 0.5;
 
   if (comboTimer > 0) {
     comboTimer--;
@@ -864,6 +866,26 @@ function drawPlayerSprite(r) {
   ctx.fillRect(r * 2.0, -r * 0.1, r * 0.25, r * 0.2);
 }
 
+// Drawn live each frame (instead of baked into bgCanvas) so it can scroll
+// at higher levels — offsets wrap via modulo so the tileable grid loops
+// seamlessly regardless of how far bgScrollX/Y have accumulated.
+function drawScrollingGrid() {
+  ctx.strokeStyle = 'rgba(255, 110, 110, 0.25)';
+  ctx.lineWidth = 1;
+  const offsetX = ((bgScrollX % GRID_SPACING) + GRID_SPACING) % GRID_SPACING;
+  const offsetY = ((bgScrollY % GRID_SPACING) + GRID_SPACING) % GRID_SPACING;
+  ctx.beginPath();
+  for (let x = -offsetX; x < canvas.width + GRID_SPACING; x += GRID_SPACING) {
+    ctx.moveTo(x + 0.5, 0);
+    ctx.lineTo(x + 0.5, canvas.height);
+  }
+  for (let y = -offsetY; y < canvas.height + GRID_SPACING; y += GRID_SPACING) {
+    ctx.moveTo(0, y + 0.5);
+    ctx.lineTo(canvas.width, y + 0.5);
+  }
+  ctx.stroke();
+}
+
 function draw() {
   ctx.save();
   if (shake > 0.5) {
@@ -871,6 +893,7 @@ function draw() {
   }
 
   ctx.drawImage(bgCanvas, -20, -20);
+  drawScrollingGrid();
 
   for (const s of splatters) {
     ctx.fillStyle = `rgba(190, 10, 30, ${s.alpha})`;

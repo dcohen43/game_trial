@@ -54,6 +54,18 @@
     return Math.max(3, Math.round((4 + level) * spaceScale));
   }
 
+  // Background scroll speed (px/frame) for a given level — the arena floor
+  // starts drifting from level 3 onward (after the player has had a level
+  // to settle in), adding a perceptual difficulty layer without touching
+  // real world/hit-test coordinates (only the visual grid moves). Capped so
+  // it stays readable rather than nauseating at high levels.
+  const BG_SCROLL_START_LEVEL = 3;
+  const BG_SCROLL_MAX_SPEED = 1.6;
+  function backgroundScrollSpeedForLevel(level) {
+    if (level < BG_SCROLL_START_LEVEL) return 0;
+    return Math.min(0.4 + (level - BG_SCROLL_START_LEVEL) * 0.15, BG_SCROLL_MAX_SPEED);
+  }
+
   function rectsOverlap(a, b) {
     return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
   }
@@ -223,6 +235,9 @@
     pickEnemyKind,
     enemyStatsForLevel,
     enemiesPerLevel,
+    backgroundScrollSpeedForLevel,
+    BG_SCROLL_START_LEVEL,
+    BG_SCROLL_MAX_SPEED,
     rectsOverlap,
     circlesOverlap,
     resolveObstacleCollisions,

@@ -115,6 +115,27 @@ describe('enemiesPerLevel', () => {
   });
 });
 
+describe('backgroundScrollSpeedForLevel', () => {
+  test('is stationary before the start level', () => {
+    assert.equal(GameCore.backgroundScrollSpeedForLevel(1), 0);
+    assert.equal(GameCore.backgroundScrollSpeedForLevel(2), 0);
+  });
+
+  test('starts moving at BG_SCROLL_START_LEVEL', () => {
+    assert.equal(GameCore.backgroundScrollSpeedForLevel(GameCore.BG_SCROLL_START_LEVEL), 0.4);
+  });
+
+  test('grows with level beyond the start level', () => {
+    const atStart = GameCore.backgroundScrollSpeedForLevel(GameCore.BG_SCROLL_START_LEVEL);
+    const later = GameCore.backgroundScrollSpeedForLevel(GameCore.BG_SCROLL_START_LEVEL + 2);
+    assert.ok(later > atStart);
+  });
+
+  test('caps out at BG_SCROLL_MAX_SPEED at very high levels', () => {
+    assert.equal(GameCore.backgroundScrollSpeedForLevel(1000), GameCore.BG_SCROLL_MAX_SPEED);
+  });
+});
+
 describe('rectsOverlap', () => {
   test('detects overlapping rects', () => {
     const a = { x: 0, y: 0, w: 10, h: 10 };
