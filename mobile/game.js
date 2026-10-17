@@ -460,7 +460,9 @@ function spawnObstacles() {
     const h = (50 + Math.random() * 70) * worldScale;
     const x = 40 + Math.random() * (canvas.width - 80 - w);
     const y = 40 + Math.random() * (canvas.height - 80 - h);
-    const rect = { x, y, w, h, variant: Math.floor(Math.random() * 3) };
+    const driftSpeed = GameCore.obstacleDriftSpeedForLevel(wave);
+    const angle = Math.random() * Math.PI * 2;
+    const rect = { x, y, w, h, variant: Math.floor(Math.random() * 3), vx: Math.cos(angle) * driftSpeed, vy: Math.sin(angle) * driftSpeed };
     const rectCx = x + w / 2, rectCy = y + h / 2;
     if (Math.hypot(rectCx - cx, rectCy - cy) < 150) continue;
     if (obstacles.some(o => GameCore.rectsOverlap(
@@ -716,6 +718,13 @@ function update() {
   bgScrollX += bgSpeed;
   bgScrollY += bgSpeed * 0.5;
 
+  // Obstacles drift and bounce off the arena edges too (level 3+, see
+  // spawnObstacles) so the layout itself keeps changing, not just the
+  // background. Real rects, so collision/resolution below sees it live.
+  for (const rect of obstacles) {
+    GameCore.moveObstacle(rect, canvas.width, canvas.height);
+  }
+
   if (comboTimer > 0) {
     comboTimer--;
     if (comboTimer === 0 && comboCount > 0) {
@@ -838,6 +847,7 @@ function update() {
   for (let i = pickups.length - 1; i >= 0; i--) {
     const p = pickups[i];
     p.bob += 0.08;
+    resolveObstacleCollisions(p); // obstacles can drift into a dropped pickup now
     if (GameCore.circlesOverlap(player.x, player.y, player.r, p.x, p.y, p.r)) {
       applyPickup(p);
       pickups.splice(i, 1);

@@ -136,6 +136,56 @@ describe('backgroundScrollSpeedForLevel', () => {
   });
 });
 
+describe('obstacleDriftSpeedForLevel', () => {
+  test('is stationary before the start level', () => {
+    assert.equal(GameCore.obstacleDriftSpeedForLevel(1), 0);
+    assert.equal(GameCore.obstacleDriftSpeedForLevel(2), 0);
+  });
+
+  test('starts moving at OBSTACLE_DRIFT_START_LEVEL', () => {
+    assert.equal(GameCore.obstacleDriftSpeedForLevel(GameCore.OBSTACLE_DRIFT_START_LEVEL), 0.2);
+  });
+
+  test('caps out at OBSTACLE_DRIFT_MAX_SPEED at very high levels', () => {
+    assert.equal(GameCore.obstacleDriftSpeedForLevel(1000), GameCore.OBSTACLE_DRIFT_MAX_SPEED);
+  });
+
+  test('stays at or below the background scroll speed at the same level (obstacles are solid hazards)', () => {
+    for (let level = 1; level <= 30; level++) {
+      assert.ok(GameCore.obstacleDriftSpeedForLevel(level) <= GameCore.backgroundScrollSpeedForLevel(level));
+    }
+  });
+});
+
+describe('moveObstacle', () => {
+  test('translates by velocity when staying in bounds', () => {
+    const o = { x: 50, y: 50, w: 20, h: 20, vx: 2, vy: -1 };
+    GameCore.moveObstacle(o, 400, 400);
+    assert.equal(o.x, 52);
+    assert.equal(o.y, 49);
+    assert.equal(o.vx, 2);
+    assert.equal(o.vy, -1);
+  });
+
+  test('bounces off the left/top edges, clamping position and reflecting velocity', () => {
+    const o = { x: 1, y: 1, w: 20, h: 20, vx: -5, vy: -5 };
+    GameCore.moveObstacle(o, 400, 400);
+    assert.equal(o.x, 0);
+    assert.equal(o.y, 0);
+    assert.equal(o.vx, 5);
+    assert.equal(o.vy, 5);
+  });
+
+  test('bounces off the right/bottom edges, clamping position and reflecting velocity', () => {
+    const o = { x: 385, y: 385, w: 20, h: 20, vx: 5, vy: 5 };
+    GameCore.moveObstacle(o, 400, 400);
+    assert.equal(o.x, 380);
+    assert.equal(o.y, 380);
+    assert.equal(o.vx, -5);
+    assert.equal(o.vy, -5);
+  });
+});
+
 describe('rectsOverlap', () => {
   test('detects overlapping rects', () => {
     const a = { x: 0, y: 0, w: 10, h: 10 };

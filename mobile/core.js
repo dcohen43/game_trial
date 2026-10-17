@@ -66,6 +66,40 @@
     return Math.min(0.4 + (level - BG_SCROLL_START_LEVEL) * 0.15, BG_SCROLL_MAX_SPEED);
   }
 
+  // Obstacle drift speed (px/frame) for a given level — same level-3
+  // threshold as the background scroll, but capped lower since these are
+  // solid hazards (not just a cosmetic grid) and drifting too fast would
+  // feel unfair rather than challenging.
+  const OBSTACLE_DRIFT_START_LEVEL = 3;
+  const OBSTACLE_DRIFT_MAX_SPEED = 0.8;
+  function obstacleDriftSpeedForLevel(level) {
+    if (level < OBSTACLE_DRIFT_START_LEVEL) return 0;
+    return Math.min(0.2 + (level - OBSTACLE_DRIFT_START_LEVEL) * 0.08, OBSTACLE_DRIFT_MAX_SPEED);
+  }
+
+  // Advances a drifting obstacle {x,y,w,h,vx,vy} by one step, bouncing off
+  // the canvas edges (reflecting velocity) so it stays in play instead of
+  // drifting off-screen. Pure aside from mutating the passed obstacle.
+  function moveObstacle(obstacle, canvasWidth, canvasHeight) {
+    obstacle.x += obstacle.vx;
+    obstacle.y += obstacle.vy;
+    if (obstacle.x < 0) {
+      obstacle.x = 0;
+      obstacle.vx = Math.abs(obstacle.vx);
+    } else if (obstacle.x + obstacle.w > canvasWidth) {
+      obstacle.x = canvasWidth - obstacle.w;
+      obstacle.vx = -Math.abs(obstacle.vx);
+    }
+    if (obstacle.y < 0) {
+      obstacle.y = 0;
+      obstacle.vy = Math.abs(obstacle.vy);
+    } else if (obstacle.y + obstacle.h > canvasHeight) {
+      obstacle.y = canvasHeight - obstacle.h;
+      obstacle.vy = -Math.abs(obstacle.vy);
+    }
+    return obstacle;
+  }
+
   function rectsOverlap(a, b) {
     return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
   }
@@ -238,6 +272,10 @@
     backgroundScrollSpeedForLevel,
     BG_SCROLL_START_LEVEL,
     BG_SCROLL_MAX_SPEED,
+    obstacleDriftSpeedForLevel,
+    OBSTACLE_DRIFT_START_LEVEL,
+    OBSTACLE_DRIFT_MAX_SPEED,
+    moveObstacle,
     rectsOverlap,
     circlesOverlap,
     resolveObstacleCollisions,
