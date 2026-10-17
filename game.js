@@ -575,6 +575,11 @@ function update() {
   for (const rect of obstacles) {
     GameCore.moveObstacle(rect, canvas.width, canvas.height);
   }
+  for (let i = 0; i < obstacles.length; i++) {
+    for (let j = i + 1; j < obstacles.length; j++) {
+      GameCore.resolveObstaclePair(obstacles[i], obstacles[j]);
+    }
+  }
 
   if (comboTimer > 0) {
     comboTimer--;

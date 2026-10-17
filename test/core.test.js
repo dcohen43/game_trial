@@ -186,6 +186,49 @@ describe('moveObstacle', () => {
   });
 });
 
+describe('resolveObstaclePair', () => {
+  test('is a no-op when the rects do not overlap', () => {
+    const a = { x: 0, y: 0, w: 10, h: 10, vx: 1, vy: 1 };
+    const b = { x: 100, y: 100, w: 10, h: 10, vx: -1, vy: -1 };
+    const aBefore = { ...a };
+    const bBefore = { ...b };
+    GameCore.resolveObstaclePair(a, b);
+    assert.deepEqual(a, aBefore);
+    assert.deepEqual(b, bBefore);
+  });
+
+  test('separates along x and reflects vx when overlap is mostly horizontal', () => {
+    // wide/short overlap: horizontal overlap is the smaller axis
+    const a = { x: 0, y: 0, w: 20, h: 100, vx: 1, vy: 0 };
+    const b = { x: 15, y: 0, w: 20, h: 100, vx: -1, vy: 0 };
+    GameCore.resolveObstaclePair(a, b);
+    assert.equal(GameCore.rectsOverlap(a, b), false);
+    assert.equal(a.vx, -1);
+    assert.equal(b.vx, 1);
+    assert.equal(a.vy, 0);
+    assert.equal(b.vy, 0);
+  });
+
+  test('separates along y and reflects vy when overlap is mostly vertical', () => {
+    const a = { x: 0, y: 0, w: 100, h: 20, vx: 0, vy: 1 };
+    const b = { x: 0, y: 15, w: 100, h: 20, vx: 0, vy: -1 };
+    GameCore.resolveObstaclePair(a, b);
+    assert.equal(GameCore.rectsOverlap(a, b), false);
+    assert.equal(a.vy, -1);
+    assert.equal(b.vy, 1);
+    assert.equal(a.vx, 0);
+    assert.equal(b.vx, 0);
+  });
+
+  test('pushes the rects apart from each other, not just in one direction', () => {
+    const a = { x: 0, y: 0, w: 20, h: 100, vx: 1, vy: 0 };
+    const b = { x: 15, y: 0, w: 20, h: 100, vx: -1, vy: 0 };
+    GameCore.resolveObstaclePair(a, b);
+    assert.ok(a.x < 0);
+    assert.ok(b.x > 15);
+  });
+});
+
 describe('rectsOverlap', () => {
   test('detects overlapping rects', () => {
     const a = { x: 0, y: 0, w: 10, h: 10 };

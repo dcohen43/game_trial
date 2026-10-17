@@ -100,6 +100,40 @@
     return obstacle;
   }
 
+  // Resolves a collision between two drifting obstacles {x,y,w,h,vx,vy} by
+  // separating them along the axis of least overlap and reflecting both
+  // obstacles' velocity on that axis — an arcade-style bounce, not a
+  // physically exact elastic collision. No-op if they don't actually
+  // overlap. Mutates both obstacles.
+  function resolveObstaclePair(a, b) {
+    const overlapX = Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x);
+    const overlapY = Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y);
+    if (overlapX <= 0 || overlapY <= 0) return;
+    if (overlapX < overlapY) {
+      const push = overlapX / 2;
+      if (a.x < b.x) {
+        a.x -= push;
+        b.x += push;
+      } else {
+        a.x += push;
+        b.x -= push;
+      }
+      a.vx = -a.vx;
+      b.vx = -b.vx;
+    } else {
+      const push = overlapY / 2;
+      if (a.y < b.y) {
+        a.y -= push;
+        b.y += push;
+      } else {
+        a.y += push;
+        b.y -= push;
+      }
+      a.vy = -a.vy;
+      b.vy = -b.vy;
+    }
+  }
+
   function rectsOverlap(a, b) {
     return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
   }
@@ -276,6 +310,7 @@
     OBSTACLE_DRIFT_START_LEVEL,
     OBSTACLE_DRIFT_MAX_SPEED,
     moveObstacle,
+    resolveObstaclePair,
     rectsOverlap,
     circlesOverlap,
     resolveObstacleCollisions,
